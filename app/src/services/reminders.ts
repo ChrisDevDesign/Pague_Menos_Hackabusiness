@@ -2,6 +2,18 @@
 // Só guarda o produto, quanto usa e quanto tem. Fica neste aparelho; nada vai para o motor nem para a LLM.
 import type { Product } from "../contracts/types";
 import type { ContinuousMedication } from "../persona";
+import { PRODUCT_BY_ID } from "./mock/catalogData";
+
+/** #47: o mesmo item na Hora de repor. O original e a cópia Pague Menos (mesmo nome) e os remédios equivalentes
+ *  (mesmo princípio ativo e dose) contam como um só, para a lista nunca mostrar dois cartões da mesma coisa. */
+export function itemKey(p: Pick<Product, "id" | "ownBrandOf" | "equivalence">): string {
+  if (p.equivalence) return `eq:${p.equivalence.group}`;
+  return p.ownBrandOf ?? p.id;
+}
+export function itemKeyOf(id: string): string {
+  const p = PRODUCT_BY_ID.get(id);
+  return p ? itemKey(p) : id;
+}
 
 export type ReminderSource = 1 | 2 | 3 | 4 | 5;
 

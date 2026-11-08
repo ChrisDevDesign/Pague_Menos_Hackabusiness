@@ -3,9 +3,10 @@
 // ReminderOffer = cartão "Quer ser avisado antes de acabar?".
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { Product } from "../contracts/types";
-import { MAX_PER_DAY, canRemind, countable, defaultReminder, endDate, fmtShort, isHealth, usageLine, withUsage, type Reminder, type ReminderSource } from "../services/reminders";
+import { MAX_PER_DAY, boxDays, canAuto, canRemind, countable, defaultReminder, endDate, fmtShort, isHealth, itemKeyOf, usageLine, withUsage, type Reminder, type ReminderSource } from "../services/reminders";
 import { PERSONA } from "../persona";
 import { useApp } from "../state/app";
+import { AutoSheet } from "./AutoSheet";
 import { BottomSheet } from "./BottomSheet";
 import { DateChip } from "./DateChip";
 import { Icon } from "./Icon";
@@ -124,16 +125,23 @@ export function ReminderSheet({ product, initial, onSave, onClose, saveLabel }: 
   );
 }
 
+/** Reposição automática escolhida no pedido confirmado (#46). */
+export interface AutoPick { product: Product; qty: number; everyDays: number; times: number }
+
 /** Cartão "Quer ser avisado antes de acabar?" com os itens que fazem sentido repor (fluxos 2, 3 e 4).
- *  #37: a linha inteira marca; `onPending` informa o que está marcado, para ativar se a pessoa sair sem tocar em Ativar. */
-export function ReminderOffer({ products, source, boughtBefore, boxesById, onSkip, onPending, title = "Quer ser avisado antes de acabar?", lead }: {
+ *  #37: a linha inteira marca; `onPending` informa o que está marcado, para ativar se a pessoa sair sem tocar em Ativar.
+ *  #46: com `order` (pedido confirmado), cada item sem receita também pode ligar a reposição automática. */
+export function ReminderOffer({ products, source, boughtBefore, boxesById, onSkip, onPending, order, title = "Quer ser avisado antes de acabar?", lead }: {
   products: Product[]; source: ReminderSource; boughtBefore?: Map<string, string>; boxesById?: Map<string, number>;
-  onSkip?: () => void; onPending?: (list: Reminder[]) => void; title?: string; lead?: string;
+  onSkip?: () => void; onPending?: (list: Reminder[], auto: AutoPick[]) => void; title?: string; lead?: string;
+  order?: { id: string; createdAt: string; storeName: string | null };
 }) {
-  const { dispatch, reminders, remindIntent, reminderConsentAt } = useApp();
+  const { dispatch, reminders, remindIntent, reminderConsentAt, refillHidden } = useApp();
   const eligible = useMemo(() => {
-    const seen = new Set([...reminders.map((r) => r.productId), ...PERSONA.continuousMedications.map((m) => m.productId)]);
-    const list = products.filter((p, i) => canRemind(p) && !seen.has(p.id) && products.findIndex((q) => q.id === p.id) === i);
+    // #47: o que já está na lista (o mesmo produto, a cópia Pague Menos ou um equivalente) não é oferecido de novo
+    const seen = new Set([...reminders.map((r) => itemKeyOf(r.productId)),
+      ...PERSONA.continuousMedications.filter((m) => !refillHidden.includes(m.productId)).map((m) => itemKeyOf(m.productId))]);
+    const list = products.filter((p, i) => canRemind(p) && !seen.has(itemKeyOf(p.id)) && products.findIndex((q) => itemKeyOf(q.id) === itemKeyOf(p.id)) === i);
     return boughtBefore ? [...list].sort((a, b) => Number(boughtBefore.has(b.id)) - Number(boughtBefore.has(a.id))) : list;
     // só na montagem: a lista não muda enquanto a pessoa marca
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -145,21 +153,34 @@ export function ReminderOffer({ products, source, boughtBefore, boxesById, onSki
   const [all, setAll] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [done, setDone] = useState(0);
+  const [doneAuto, setDoneAuto] = useState(0);
+  const [autoT, setAutoT] = useState<Record<string, number>>({});
+  const [autoAsk, setAutoAsk] = useState<Product | null>(null);
   const selected = eligible.filter((p) => checked[p.id]).map((p) => settings[p.id]);
-  useEffect(() => { onPending?.(done ? [] : selected); });   // a cada mudança; o pai guarda o mais recente
+  const autoPicks: AutoPick[] = order ? eligible.filter((p) => checked[p.id] && autoT[p.id] && canAuto(p))
+    .map((p) => ({ product: p, qty: 1, everyDays: boxDays(settings[p.id], p), times: autoT[p.id] })) : [];
+  useEffect(() => { onPending?.(done ? [] : selected, done ? [] : autoPicks); });   // a cada mudança; o pai guarda o mais recente
 
   if (done) {
     return (
       <section className="rem-offer done" aria-live="polite">
         <span className="rem-ok"><Icon name="checkCircle" size={26} /></span>
-        <span className="grow"><b>{done === 1 ? "Aviso ligado!" : `${done} avisos ligados!`}</b><small>Avisamos 5 dias antes de acabar. Ajuste quando quiser em Hora de repor.</small></span>
+        <span className="grow">
+          <b>{doneAuto ? (doneAuto === 1 ? "Aviso e reposição automática ligados!" : `${doneAuto} reposições automáticas ligadas!`) : done === 1 ? "Aviso ligado!" : `${done} avisos ligados!`}</b>
+          <small>{doneAuto ? "Esta compra foi a 1ª entrega. Acompanhe em Mais > Assinaturas e ajuste em Hora de repor." : "Avisamos 5 dias antes de acabar. Ajuste quando quiser em Hora de repor."}</small>
+        </span>
       </section>
     );
   }
   if (!eligible.length) return null;
   const shown = all ? eligible : eligible.slice(0, 3);
   const n = selected.length;
-  const activate = () => { dispatch({ type: "remAdd", reminders: selected }); setDone(n); };
+  const activate = () => {
+    dispatch({ type: "remAdd", reminders: selected });
+    if (order && autoPicks.length) dispatch({ type: "autoStart", items: autoPicks, orderId: order.id, createdAt: order.createdAt, storeName: order.storeName });
+    setDoneAuto(autoPicks.length);
+    setDone(n);
+  };
   return (
     <section className="rem-offer" aria-label="Avisar quando acabar">
       <div className="rem-head">
@@ -169,8 +190,9 @@ export function ReminderOffer({ products, source, boughtBefore, boxesById, onSki
       {shown.map((p) => {
         const r = settings[p.id];
         const before = boughtBefore?.get(p.id);
+        const times = autoT[p.id];
         return (
-          <div key={p.id} className={`rem-item${checked[p.id] ? " sel" : ""}`}>
+          <div key={p.id} className={`rem-item${checked[p.id] ? " sel" : ""}${order && canAuto(p) ? " has-auto" : ""}`}>
             <label className="rem-pick">
               <input type="checkbox" checked={!!checked[p.id]} onChange={(e) => setChecked({ ...checked, [p.id]: e.target.checked })} />
               <ProductImage product={p} size={48} />
@@ -181,15 +203,33 @@ export function ReminderOffer({ products, source, boughtBefore, boxesById, onSki
               </span>
             </label>
             <button className="rem-adjust" onClick={() => setEditing(p)} aria-label={`Ajustar uso de ${p.name}`}><Icon name="settings" size={18} /> Ajustar</button>
+            {order && canAuto(p) ? (
+              <div className={`rem-auto${times ? " on" : ""}`}>
+                <label className="rem-auto-main">
+                  <Icon name="repeat" size={16} />
+                  <span className="grow">
+                    <b>Repor automaticamente</b>
+                    <small>{times ? `${times} entregas · 1 caixa a cada ${boxDays(r, p)} dias` : "Esta compra já conta como a 1ª entrega"}</small>
+                  </span>
+                  <input type="checkbox" role="switch" className="toggle sm" checked={!!times} aria-label={`Repor ${p.name} automaticamente`}
+                    onChange={(e) => { if (e.target.checked) setAutoAsk(p); else { const next = { ...autoT }; delete next[p.id]; setAutoT(next); } }} />
+                </label>
+                {times ? <button type="button" className="btn-sm rem-auto-edit" onClick={() => setAutoAsk(p)}>Alterar entregas</button> : null}
+              </div>
+            ) : null}
           </div>
         );
       })}
       {eligible.length > 3 && !all ? <button className="btn-sm rem-more" onClick={() => setAll(true)}><Icon name="chevronDown" size={16} /> Ver mais {eligible.length - 3}</button> : null}
       {!reminderConsentAt ? <p className="rem-consent"><Icon name="lock" size={14} /> {CONSENT_TEXT}</p> : null}
       <div className="rem-actions">
-        <button className="btn primary" disabled={!n} onClick={activate}><Icon name="bell" size={18} /> {n > 1 ? `Ativar ${n} avisos` : "Ativar aviso"}</button>
+        <button className="btn primary" disabled={!n} onClick={activate}><Icon name={autoPicks.length ? "repeat" : "bell"} size={18} /> {autoPicks.length ? (n > 1 ? `Ativar ${n} itens` : "Ativar") : n > 1 ? `Ativar ${n} avisos` : "Ativar aviso"}</button>
         {onSkip ? <button className="btn outline" onClick={onSkip}>Agora não</button> : null}
       </div>
+      {autoAsk ? (
+        <AutoSheet product={autoAsk} every={boxDays(settings[autoAsk.id], autoAsk)} current={autoT[autoAsk.id]} onClose={() => setAutoAsk(null)}
+          onConfirm={(t) => { setAutoT({ ...autoT, [autoAsk.id]: t }); setChecked({ ...checked, [autoAsk.id]: true }); setAutoAsk(null); }} />
+      ) : null}
       {editing ? (
         <ReminderSheet product={editing} initial={settings[editing.id]} saveLabel="Usar estes dados" onClose={() => setEditing(null)}
           onSave={(r) => { setSettings({ ...settings, [editing.id]: r }); setChecked({ ...checked, [editing.id]: true }); setEditing(null); }} />

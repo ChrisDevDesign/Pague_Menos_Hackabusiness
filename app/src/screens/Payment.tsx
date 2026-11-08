@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { ReminderOffer } from "../components/Reminders";
+import { ReminderOffer, type AutoPick } from "../components/Reminders";
 import { ProductImage } from "../components/ProductImage";
 import type { Reminder } from "../services/reminders";
 import { TitleBar } from "../components/Bars";
@@ -110,8 +110,11 @@ export function Confirmation({ orderId }: { orderId: string }) {
   const skipped = !!o && reminderSkipped.includes(o.id);
   // #37: item marcado e não ativado liga o aviso ao sair desta tela
   const pending = useRef<Reminder[]>([]);
+  const pendingAuto = useRef<AutoPick[]>([]);
   const leave = (go: () => void) => {
     if (pending.current.length) dispatch({ type: "remAdd", reminders: pending.current });
+    // #46: reposição automática escolhida e não confirmada em "Ativar" também vale ao sair (a pessoa já escolheu as entregas)
+    if (o && pendingAuto.current.length) dispatch({ type: "autoStart", items: pendingAuto.current, orderId: o.id, createdAt: o.createdAt, storeName: o.storeName });
     go();
   };
   const where = o ? (o.mode === "retirada" ? `Retirar na ${o.storeName ?? "loja"}` : o.mode === "expressa" ? "Entrega expressa" : "Entrega agendada") : "";
@@ -132,8 +135,9 @@ export function Confirmation({ orderId }: { orderId: string }) {
 
           {o && !skipped ? (
             <ReminderOffer products={bought} source={before.size ? 4 : 2} boughtBefore={before.size ? before : undefined} boxesById={boxes}
-              onPending={(list) => { pending.current = list; }}
-              onSkip={() => { pending.current = []; dispatch({ type: "remSkip", orderId: o.id }); }} />
+              order={{ id: o.id, createdAt: o.createdAt, storeName: o.storeName }}
+              onPending={(list, auto) => { pending.current = list; pendingAuto.current = auto; }}
+              onSkip={() => { pending.current = []; pendingAuto.current = []; dispatch({ type: "remSkip", orderId: o.id }); }} />
           ) : null}
 
           {o ? (

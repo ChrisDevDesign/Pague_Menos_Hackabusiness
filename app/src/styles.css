@@ -605,21 +605,7 @@ table.quote tr.best td:last-child b { color: var(--ok); }
 .stock-alert-btn { min-height: 40px; font-size: 14px; padding: 0 12px; width: 100%; background: #fff; }
 .undo-swap { min-height: 44px; font-size: 15px; }
 
-/* ---------------- Experimento Hora de repor ---------------- */
-.stage { flex-direction: column; align-items: center; gap: 14px; }
-.demo-bar { width: 100%; max-width: 980px; background: #fff; border: 1px solid #cdd2de; border-radius: 16px; padding: 12px 14px; box-shadow: 0 4px 16px rgba(1, 0, 120, 0.08); }
-.demo-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 10px; }
-.demo-head b { color: var(--brand); font-size: 15px; }
-.demo-head span { color: var(--text-2); font-size: 12.5px; }
-.demo-tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
-.demo-tile { display: flex; flex-direction: column; gap: 4px; text-align: left; aspect-ratio: 1 / 1; max-height: 170px; border: 1.5px solid var(--line); border-radius: 12px; padding: 10px; background: #fafbff; overflow: hidden; }
-.demo-tile:hover { border-color: var(--brand); }
-.demo-tile.on { border-color: var(--brand); background: var(--brand-tint); box-shadow: 0 0 0 2px var(--brand-tint); }
-.demo-n { width: 26px; height: 26px; border-radius: 50%; background: var(--brand); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 13px; }
-.demo-tile b { font-size: 13.5px; color: var(--text); }
-.demo-tile small { font-size: 11.5px; color: var(--text-2); line-height: 1.35; }
-@media (max-width: 760px) { .demo-tiles { grid-template-columns: repeat(5, 120px); overflow-x: auto; } .demo-tile { aspect-ratio: auto; height: 140px; } }
-@media (max-width: 480px) { .stage { padding: 8px 0 0; } .demo-bar { border-radius: 0; } .phone { height: calc(100dvh - 210px); } }
+/* ---------------- Hora de repor ---------------- */
 
 .rem-link { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; color: var(--brand); font-weight: 600; font-size: 14.5px; }
 .rem-link.on { color: var(--ok); font-size: 13px; font-weight: 600; }
@@ -851,8 +837,6 @@ button:hover > .btn-sm.as-span { background: var(--brand); color: #fff; }
 .rcard-alert { gap: 6px; }
 .sec-head .btn-sm { min-height: 32px; }
 
-.demo-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-@media (max-width: 760px) { .demo-tiles { grid-template-columns: repeat(4, 130px); } }
 
 /* ---------------- #45 cartão da Hora de repor: uma grade de 12 px ---------------- */
 .refill-pad { gap: 12px; }

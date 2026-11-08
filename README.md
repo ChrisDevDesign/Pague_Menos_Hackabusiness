@@ -21,7 +21,7 @@ Limites conhecidos: conjunto de ranking pequeno (14 frases), entidades por regra
 
 ## Experimento: Hora de repor (branch `experimento/hora-de-repor`, 08/11)
 
-Testa como a pessoa coloca um produto na **Hora de repor** sem precisar "cadastrar remédio". Acima do celular há uma barra com **4 quadrados**. Cada um prepara o cenário e abre o app onde aquele fluxo aparece:
+Testa como a pessoa coloca um produto na **Hora de repor** sem precisar "cadastrar remédio". São 4 portas de entrada, todas dentro do app:
 
 | # | Fluxo | Onde aparece |
 | --- | --- | --- |

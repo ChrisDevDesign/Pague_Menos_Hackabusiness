@@ -116,7 +116,6 @@ type Action =
   | { type: "remIntent"; productId: string; on: boolean }
   | { type: "remSkip"; orderId: string }
   | { type: "remNudged"; orderId: string }
-  | { type: "remDemoReset" }
   | { type: "refillHide"; productId: string; on: boolean }
   | { type: "clearSession" }
   | { type: "toast"; text: string; action?: "cart" }
@@ -275,8 +274,6 @@ export function reducer(s: State, a: Action): State {
     case "refillHide":
       return { ...s, refillHidden: a.on ? [...new Set([...s.refillHidden, a.productId])] : s.refillHidden.filter((x) => x !== a.productId),
         toast: a.on ? { text: "Item tirado da Hora de repor." } : s.toast };
-    case "remDemoReset":   // experimento: cada quadrado começa com o histórico de pedidos limpo (os avisos ligados ficam)
-      return { ...s, orders: [], reminderSkipped: [], reminderNudged: [] };
     case "remNudged":
       return { ...s, reminderNudged: [...new Set([...s.reminderNudged, a.orderId])] };
     case "subCancel":

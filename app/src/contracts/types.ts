@@ -171,6 +171,8 @@ export interface Intent {
   /** Loja de onde sai o pedido (retirada ou expressa). null = estoque central (entrega agendada). */
   storeId?: string | null;
   missing: Array<"skinType" | "budget">;
+  /** #24/#25: o que a pessoa pediu para tirar ("gel de limpeza", "dipirona"); rótulos do catálogo. */
+  exclude?: string[];
 }
 
 export interface SearchRequest {

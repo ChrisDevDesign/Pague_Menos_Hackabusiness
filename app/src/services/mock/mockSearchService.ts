@@ -1,3 +1,4 @@
+import { exclusionText } from "./exclusions";
 // MOCK do serviço de busca. Obedece ao contrato (contracts/README.md) para que o app
 // não saiba se fala com isto ou com o GraphRAG real.
 import type {
@@ -70,12 +71,23 @@ function chatFields(res: Omit<SearchResponse, "reply" | "suggestions" | "action"
   let reply: string;
   let action: ChatAction = { type: "none" };
   const goal = res.intent.primaryGoal ? GOAL_LABEL[res.intent.primaryGoal].toLowerCase() : "";
+  // #26: frases mais tranquilas, com variação estável (mesma busca, mesmo texto); o selo do topo já diz que é simulado
+  const removed = res.intent.exclude?.length ? `Sem ${res.intent.exclude.join(" e ")}. ` : "";
   if (res.kits.length) {
-    reply = `Montei ${res.kits.length} opções de ${goal}: ${res.kits.map((k) => `${TIER_LABEL[k.tier]} ${money(k.totalCents)}`).join(", ")}. (modo simulado)`;
+    const totals = res.kits.map((k) => k.totalCents);
+    const lo = money(Math.min(...totals)), hi = money(Math.max(...totals));
+    const n = res.kits.length;
+    const what = `${n} ${n === 1 ? "opção" : "opções"} de ${goal}`;
+    const v = [...goal].reduce((t, c) => t + c.charCodeAt(0), 0) % 3;
+    const lead = n === 1 ? `Encontrei uma opção de ${goal}: ${TIER_LABEL[res.kits[0].tier]} por ${lo}.`
+      : [`Separei ${what}. A mais em conta sai por ${lo} e a mais completa, por ${hi}.`,
+         `Aqui estão ${what}: ${res.kits.map((k) => `${TIER_LABEL[k.tier]} ${money(k.totalCents)}`).join(", ")}.`,
+         `Montei ${what}, de ${lo} a ${hi}.`][v];
+    reply = `${removed}${lead} Quer que eu troque algum item ou mostre o total com entrega?`;
     action = { type: "show_kits" };
   } else if (res.kitsStatus === "none_in_budget" && res.closestKit) {
-    reply = `Com esse orçamento não fechei um kit completo de ${goal}. O mais próximo custa ${money(res.closestKit.totalCents)}.`;
-  } else reply = res.notes[0] ?? "Não consegui entender bem o pedido. Tente “pele oleosa até R$ 100”.";
+    reply = `Com esse orçamento não consegui fechar um kit completo de ${goal}. O mais perto fica em ${money(res.closestKit.totalCents)}; quer que eu suba um pouco o valor?`;
+  } else reply = res.notes[0] ?? "Não entendi bem o pedido. Pode me contar de outro jeito? Por exemplo: “pele oleosa até R$ 100”.";
   const context: ChatContext = { intent: res.intent, requested: [], excluded: [], kits: [], lastAct: act, turn: turn + 1 };
   const health = res.intent.primaryGoal != null && isHealthGoal(res.intent.primaryGoal);
   const suggestions = res.kits.length ? ["Mais barato", "Sem fragrância", "Total com entrega"]
@@ -100,12 +112,13 @@ export function createMockSearchService(opts: MockOptions = {}): SearchService {
       const turn = req.context?.turn ?? 0;
       // conversa simplificada: sem objetivo novo, ajusta a busca anterior (preço, pele, preferência)
       const prev = req.context?.intent;
-      if (prev?.primaryGoal && !parsed.intent.primaryGoal && (parsed.intent.budgetCents != null || parsed.intent.skinType || parsed.intent.preferences.length)) {
+      if (prev?.primaryGoal && !parsed.intent.primaryGoal && (parsed.intent.budgetCents != null || parsed.intent.skinType || parsed.intent.preferences.length || parsed.intent.exclude?.length)) {
         parsed.intent = {
           ...prev,
           budgetCents: parsed.intent.budgetCents ?? prev.budgetCents,
           skinType: parsed.intent.skinType ?? prev.skinType,
           preferences: [...new Set([...prev.preferences, ...parsed.intent.preferences])],
+          exclude: [...new Set([...(prev.exclude ?? []), ...(parsed.intent.exclude ?? [])])],
           storeId: req.storeId ?? prev.storeId ?? null,
           missing: [],
         };
@@ -127,7 +140,7 @@ export function createMockSearchService(opts: MockOptions = {}): SearchService {
         return {
           ...base,
           act: "repor_medicamento",
-          reply: "Abri a sua reposição de uso contínuo. Confira as quantidades e a loja mais próxima com estoque. (modo simulado)",
+          reply: "Abri a sua Hora de repor. Confira as quantidades e a loja com estoque, e é só repor.",
           suggestions: ["Tem equivalente disponível?", "Qual a entrega mais rápida?"],
           action: { type: "open_refill" },
           context: { intent: base.intent, requested: [], excluded: [], kits: [], lastAct: "repor_medicamento", turn: turn + 1 },
@@ -164,12 +177,14 @@ export function createMockSearchService(opts: MockOptions = {}): SearchService {
       const products = rankProducts(ctx);
       const comp = isHealthGoal(ctx.primary)
         ? { status: "not_applicable" as const, kits: [], closestKit: null,
-            notes: [`Encontrei ${products.length} ${products.length === 1 ? "item" : "itens"} de ${GOAL_LABEL[ctx.primary].toLowerCase()}. Toque numa sugestão para ajustar a lista.`] }
+            notes: [`Encontrei ${products.length} ${products.length === 1 ? "opção" : "opções"} para ${GOAL_LABEL[ctx.primary].toLowerCase()}. Os sem receita aparecem primeiro; toque numa sugestão para ajustar.`] }
         : compose(ctx, requestId);
       const clarification: Clarification | undefined = intent.missing.includes("skinType")
         ? { id: "skinType", question: "Como é a sua pele?", options: SKIN_OPTIONS }
         : undefined;
 
+      // #24/#25: diz o que saiu, em vez de devolver o mesmo pedido
+      const removed = ctx.excl.labels.length ? [`Sem ${exclusionText(ctx.excl)}: tirei ${comp.kits.length ? "dos kits e da lista" : "da lista"}.`] : [];
       const r = {
         ...base,
         clarification,
@@ -177,7 +192,7 @@ export function createMockSearchService(opts: MockOptions = {}): SearchService {
         kits: comp.kits,
         closestKit: comp.closestKit,
         products,
-        notes: comp.notes,
+        notes: [...removed, ...comp.notes],
       };
       return { ...r, ...chatFields(r, "busca", turn) };
     },

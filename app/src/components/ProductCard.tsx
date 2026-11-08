@@ -11,7 +11,7 @@ export function discountPct(p: Product): number {
   return p.listPriceCents > p.priceCents ? Math.round((1 - p.priceCents / p.listPriceCents) * 100) : 0;
 }
 
-export function ProductCard({ product: p, tag }: { product: Product; tag?: string }) {
+export function ProductCard({ product: p, tag, alt }: { product: Product; tag?: string; alt?: Product }) {
   const { push } = useNav();
   const { dispatch, isFav } = useApp();
   const fav = isFav(p.id);
@@ -40,6 +40,11 @@ export function ProductCard({ product: p, tag }: { product: Product; tag?: strin
             <Icon name="basketPlus" size={26} />
           </button>
         </div>
+        {alt ? (
+          <button className="pcard-alt" onClick={() => push({ name: "product", id: alt.id })} aria-label={`Ver ${alt.name} da marca ${alt.brand}`}>
+            Outra marca: {money(alt.priceCents)} <Icon name="chevron" size={12} />
+          </button>
+        ) : null}
         <div className="prices">
           {out ? (
             <span className="unavail">Indisponível</span>

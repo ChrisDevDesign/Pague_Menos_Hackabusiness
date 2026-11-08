@@ -23,6 +23,7 @@ from .data import Catalog
 from .embed import WordVectors
 from .nlu_corpus import TRAIN
 from .slang import FIGURATIVE
+from .exclusions import ExclusionReader
 from .text import norm, parse_money_cents, stem, stemmed_all, tokens
 
 ACTS = list(TRAIN)
@@ -119,6 +120,8 @@ class Understanding:
     preferences: list[str] = field(default_factory=list)
     requested_ingredients: list[str] = field(default_factory=list)
     excluded_ingredients: list[str] = field(default_factory=list)
+    # #24: tipo de produto, etapa ou nome que a pessoa pediu para tirar (rótulos do catálogo)
+    excluded_labels: list[str] = field(default_factory=list)
     steps: list[str] = field(default_factory=list)
     product_ids: list[str] = field(default_factory=list)
     budget_cents: int | None = None
@@ -157,6 +160,7 @@ class Understander:
         self.cat, self.wv, self.clf = cat, wv, clf
         self._build_phrase_index()
         self._build_product_index()
+        self.exclusions = ExclusionReader(cat)
         self._goal_vecs = None
         if wv is not None:
             self._goal_vecs = {}
@@ -250,8 +254,13 @@ class Understander:
     # ------------------------------------------------------------ interface
     def understand(self, text: str, has_context: bool = False) -> Understanding:
         clean = FIGURATIVE.sub(" ", text)      # "me caguei de medo" não é diarreia
-        q = _AFTER_BATH.sub(" ", norm(clean))   # "repuxa depois do banho" é a pele, não o banho
         u = Understanding(text=text)
+        # #24: "sem gel de limpeza" sai da frase antes de procurar objetivo, etapa e produto
+        ex = self.exclusions.read(clean)
+        if ex:
+            u.excluded_labels = list(ex.labels)
+            clean = text = ex.stripped
+        q = _AFTER_BATH.sub(" ", norm(clean))   # "repuxa depois do banho" é a pele, não o banho
         toks, found = self._scan(clean)
 
         concern_hits: Counter = Counter()
@@ -364,7 +373,7 @@ class Understander:
             only_modifiers = not (u.goals or u.steps or u.product_ids) or (
                 u.goals == ["oleosidade"] and u.skin == "oleosa" and len(u.concerns) <= 1 and len(toks) <= 4)
             if only_modifiers and (u.preferences or u.skin or u.budget_mentioned or u.cheaper or u.richer or
-                                   u.excluded_ingredients or u.pregnancy or u.tier):
+                                   u.excluded_ingredients or u.excluded_labels or u.pregnancy or u.tier):
                 act = "refinar"
         if act == "refinar" and not has_context:
             act = "busca" if (u.has_domain_signal or u.budget_mentioned) else "busca"

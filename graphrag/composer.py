@@ -15,6 +15,7 @@ import re
 from dataclasses import dataclass, field
 
 from .data import STEP_ORDER, Catalog
+from .exclusions import ExclusionReader, Exclusions, excluded as _excluded
 
 SPECIALTY = {"acne", "manchas", "sinais_idade", "olheiras", "textura"}
 TIER_BONUS = {"intermediario": 2, "premium": 1}   # desempate por faixa de preço; não conta como "item melhor" no Completo
@@ -101,6 +102,7 @@ class Ctx:
     requested: list[str] = field(default_factory=list)
     excluded: list[str] = field(default_factory=list)
     store_id: str | None = None
+    excl: Exclusions | None = None          # #24: tipo, etapa ou nome que a pessoa tirou
     rel: dict[str, float] = field(default_factory=dict)   # nota 0..1 da recuperação, por produto
     w_rel: float = 6.0
 
@@ -118,7 +120,13 @@ def build_ctx(cat: Catalog, intent: dict, requested=(), excluded=(), rel=None, w
     assumed = None
     if not skin:
         assumed = {"acne": "oleosa", "oleosidade": "oleosa", "pele_sensivel": "sensível"}.get(intent["primaryGoal"])
-    return Ctx(goals=list(intent["goals"]), primary=intent["primaryGoal"],
+    labels = intent.get("exclude") or []
+    excl = None
+    if labels:
+        reader = getattr(cat, "_exclusion_reader", None) or ExclusionReader(cat)
+        cat._exclusion_reader = reader
+        excl = reader.from_labels(labels)
+    return Ctx(excl=excl, goals=list(intent["goals"]), primary=intent["primaryGoal"],
                concerns={c for g in defs for c in g["concerns"]}, primary_concerns=set(pdef["concerns"]),
                skin=skin, assumed_skin=assumed, prefs=list(intent.get("preferences", [])),
                pregnancy=bool(intent.get("pregnancy")), budget=intent.get("budgetCents"),
@@ -143,6 +151,8 @@ class Composer:
         if ctx.pregnancy and "consultar_se_gestante" in p["warnings"]:
             return False
         if ctx.excluded and set(ctx.excluded) & set(p["ingredients"]):
+            return False
+        if _excluded(p, ctx.excl):
             return False
         if not all(pref in p["claims"] for pref in ctx.prefs):
             return False
@@ -417,7 +427,8 @@ class Composer:
         full: dict[str, list[dict]] = {}
         short: dict[str, list[dict]] = {}
         relaxed = []
-        for step in goal["required_steps"] + goal["optional_steps"]:
+        gone = set(ctx.excl.steps) if ctx.excl else set()   # #24: "sem limpeza" tira a etapa
+        for step in [s for s in goal["required_steps"] + goal["optional_steps"] if s not in gone]:
             lst, r = self.candidates_for(step, ctx)
             if not lst:
                 continue
@@ -425,8 +436,8 @@ class Composer:
                 relaxed.append(step)
             full[step] = lst
             short[step] = self.shortlist(lst, ctx)
-        required = goal["required_steps"]
-        if any(s not in short for s in required):
+        required = [s for s in goal["required_steps"] if s not in gone]
+        if not required or any(s not in short for s in required):
             return {"status": "not_applicable", "kits": [], "closestKit": None,
                     "notes": ["Não encontramos produtos suficientes para montar um kit completo com essas preferências."]}
         for s in [x for x in relaxed if x in required]:

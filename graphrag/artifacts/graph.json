@@ -637,7 +637,7 @@
   {
    "id": "goal:higiene_premium",
    "kind": "goal",
-   "label": "Higiene premium",
+   "label": "Higiene do dia a dia",
    "synonyms": [
     "higiene",
     "higiene premium",
@@ -649,7 +649,11 @@
     "pasta de dente",
     "desodorante",
     "cabelo",
-    "produtos de higiene"
+    "produtos de higiene",
+    "higiene do dia a dia",
+    "kit de higiene",
+    "kit de viagem",
+    "higiene pra viagem"
    ]
   },
   {
@@ -781,7 +785,13 @@
     "cuidar da pele",
     "cuidado com a pele",
     "rotina",
-    "começar a cuidar"
+    "começar a cuidar",
+    "kit masculino",
+    "skin care masculino",
+    "cuidados masculinos",
+    "pele masculina",
+    "pra homem",
+    "para homem"
    ]
   },
   {
@@ -25057,11 +25067,6 @@
   },
   {
    "from": "product:p243",
-   "to": "claim:sem fragrância",
-   "type": "HAS_CLAIM"
-  },
-  {
-   "from": "product:p243",
    "to": "concern:cuidado_corporal",
    "type": "ADDRESSES"
   },
@@ -27796,11 +27801,6 @@
   },
   {
    "from": "product:p279",
-   "to": "claim:sem fragrância",
-   "type": "HAS_CLAIM"
-  },
-  {
-   "from": "product:p279",
    "to": "concern:cuidado_corporal",
    "type": "ADDRESSES"
   },
@@ -27952,11 +27952,6 @@
    "from": "product:p281",
    "to": "brand:Noble Banho",
    "type": "OF_BRAND"
-  },
-  {
-   "from": "product:p281",
-   "to": "claim:sem fragrância",
-   "type": "HAS_CLAIM"
   },
   {
    "from": "product:p281",
@@ -29299,7 +29294,7 @@
    "CONTAINS": 443,
    "COVERS": 300,
    "EQUIVALENT_TO": 24,
-   "HAS_CLAIM": 171,
+   "HAS_CLAIM": 168,
    "HAS_WARNING": 76,
    "IN_DOMAIN": 297,
    "IN_EQUIV_GROUP": 8,
@@ -29311,6 +29306,6 @@
    "TARGETS": 42
   },
   "totalNodes": 759,
-  "totalEdges": 4361
+  "totalEdges": 4358
  }
 }

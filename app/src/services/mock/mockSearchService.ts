@@ -18,7 +18,7 @@ import type {
 } from "../../contracts/types";
 import { GOAL_LABEL, STEP_ORDER, TIER_LABEL } from "../../contracts/types";
 import { PRODUCTS, PRODUCT_BY_ID, STORES, stockAt } from "./catalogData";
-import { urgency } from "../urgency";
+import { attention, urgency } from "../urgency";
 import { adaptToStore, applySwap, buildCtx, compose, isHealthGoal, rankProducts, swapOptions } from "./composer";
 import { assessSafety, isRefillRequest, norm, parseIntent } from "./intent";
 
@@ -67,7 +67,7 @@ function emptyIntent(storeId: string | null): Intent {
 }
 
 /** Texto, sugestões e ação do modo simulado (o motor real escreve os seus). */
-function chatFields(res: Omit<SearchResponse, "reply" | "suggestions" | "action" | "context" | "act">, act: string, turn: number) {
+function chatFields(res: Omit<SearchResponse, "reply" | "suggestions" | "action" | "context" | "act">, act: string, turn: number, refined = false) {
   let reply: string;
   let action: ChatAction = { type: "none" };
   const goal = res.intent.primaryGoal ? GOAL_LABEL[res.intent.primaryGoal].toLowerCase() : "";
@@ -83,7 +83,8 @@ function chatFields(res: Omit<SearchResponse, "reply" | "suggestions" | "action"
       : [`Separei ${what}. A mais em conta sai por ${lo} e a mais completa, por ${hi}.`,
          `Aqui estão ${what}: ${res.kits.map((k) => `${TIER_LABEL[k.tier]} ${money(k.totalCents)}`).join(", ")}.`,
          `Montei ${what}, de ${lo} a ${hi}.`][v];
-    reply = `${removed}${lead} Quer que eu troque algum item ou mostre o total com entrega?`;
+    // #58: ajuste no meio da conversa diz que ajustou, como no motor
+    reply = `${removed}${refined ? `Pronto, ajustei. Ficaram ${what}: ${res.kits.map((k) => `${TIER_LABEL[k.tier]} ${money(k.totalCents)}`).join(", ")}.` : lead} Quer que eu troque algum item ou mostre o total com entrega?`;
     action = { type: "show_kits" };
   } else if (res.kitsStatus === "none_in_budget" && res.closestKit) {
     reply = `Com esse orçamento não consegui fechar um kit completo de ${goal}. O mais perto fica em ${money(res.closestKit.totalCents)}; quer que eu suba um pouco o valor?`;
@@ -91,8 +92,27 @@ function chatFields(res: Omit<SearchResponse, "reply" | "suggestions" | "action"
   const context: ChatContext = { intent: res.intent, requested: [], excluded: [], kits: [], lastAct: act, turn: turn + 1 };
   const health = res.intent.primaryGoal != null && isHealthGoal(res.intent.primaryGoal);
   const suggestions = res.kits.length ? ["Mais barato", "Sem fragrância", "Total com entrega"]
-    : health ? ["Mais barato", "Remédio para gripe", "Remédio para dor de cabeça"] : ["Kit de suplementos", "Higiene premium"];
+    : health ? ["Mais barato", "Remédio para gripe", "Remédio para dor de cabeça"] : ["Kit de suplementos", "Kit de higiene"];
   return { act, reply, suggestions, action, context };
+}
+
+const GIFT = /\bpresente(ar|s)?\b|\bpresentear\b|\bde presente\b/;
+/** Prateleiras que não viram kit: remédio de pressão (#54) e pedido só de cabelo (#58). */
+const SHELVES: Array<{ re: RegExp; when: (goal: string | null, q: string) => boolean; pick: (p: Product) => boolean; note: (n: number) => string }> = [
+  { re: /\b(pressao alta|hipertensao|(remedio|medicamento)s? (de|da|pra|para|pro) pressao)\b/, when: (goal) => !goal,
+    pick: (p) => !!p.equivalence?.group.startsWith("tensivalol"),
+    note: (n) => `Encontrei ${n} ${n === 1 ? "item" : "itens"} de pressão alta. São remédios com receita: a compra pede a receita.` },
+  { re: /\b(cabelo|cabelos|cacheado|cacheados|cachos|crespo|caspa|shampoo|xampu|condicionador)\b/,
+    when: (goal, q) => (!goal || goal === "higiene_premium") && !/\b(banho|higiene|dente|dentes|bucal|desodorante|sabonete|viagem)\b/.test(q),
+    pick: (p) => p.coversSteps.includes("higiene_cabelo") && p.stockQty > 0,
+    note: (n) => `Encontrei ${n} ${n === 1 ? "item" : "itens"} de cabelo. Se quiser, toque numa sugestão para montar um kit ou ajustar a lista.` },
+];
+
+/** #52: febre que dura ou não baixa: a lista segue, com a orientação na frente. */
+function withAttention(res: SearchResponse): SearchResponse {
+  const att = attention(res.query);
+  if (!att || res.safety.decision === "urgent") return res;
+  return { ...res, safety: att };   // a orientação aparece no quadro de atenção, sem repetir no texto
 }
 
 export interface MockOptions {
@@ -109,6 +129,7 @@ export function createMockSearchService(opts: MockOptions = {}): SearchService {
       await wait();
       const requestId = `r_${hash(JSON.stringify({ ...req, context: undefined }))}`;
       const parsed = parseIntent(req);
+      let refined = false;
       const turn = req.context?.turn ?? 0;
       // conversa simplificada: sem objetivo novo, ajusta a busca anterior (preço, pele, preferência)
       const prev = req.context?.intent;
@@ -123,6 +144,7 @@ export function createMockSearchService(opts: MockOptions = {}): SearchService {
           missing: [],
         };
         parsed.understood = true;
+        refined = true;
       }
       const { intent } = parsed;
       const urgent = urgency(req.query);   // #63: antes de qualquer outra coisa
@@ -156,6 +178,20 @@ export function createMockSearchService(opts: MockOptions = {}): SearchService {
         closestKit: null,
       } as const;
 
+      // #59: presente sem objetivo: pergunta antes de chutar uma prateleira
+      if (!parsed.intent.primaryGoal && GIFT.test(parsed.normalized)) {
+        const r = { ...base, kitsStatus: "not_applicable" as const, kits: [], products: [], notes: [] };
+        return { ...r, ...chatFields(r, "busca", turn),
+          reply: "Que legal, um presente! Eu monto um kit pronto. A pessoa gosta mais de cuidar da pele, de itens de banho e higiene ou de suplementos?",
+          suggestions: ["Kit de skin care", "Kit de higiene", "Kit de suplementos"] };
+      }
+      // #54 e #58: remédio de pressão e pedido só de cabelo viram lista, como no motor
+      const shelf = !refined ? SHELVES.find((s) => s.re.test(parsed.normalized) && s.when(parsed.intent.primaryGoal, parsed.normalized)) : undefined;
+      if (shelf) {
+        const products = PRODUCTS.filter(shelf.pick).sort((a, b) => Number(!!a.rx) - Number(!!b.rx) || a.priceCents - b.priceCents);
+        const r = { ...base, kitsStatus: "not_applicable" as const, kits: [], products, notes: [shelf.note(products.length)] };
+        return withAttention({ ...r, ...chatFields(r, "busca", turn) });
+      }
       if (!parsed.understood) {
         const found = tokenSearch(req.query);
         const r = {
@@ -169,7 +205,7 @@ export function createMockSearchService(opts: MockOptions = {}): SearchService {
               : "Não entendi o pedido. Mostrando alguns produtos; tente descrever um objetivo, como pele oleosa até R$ 100.",
           ],
         };
-        return { ...r, ...chatFields(r, "busca", turn) };
+        return withAttention({ ...r, ...chatFields(r, "busca", turn) });
       }
 
       const ctx = buildCtx(intent, parsed.requestedIngredients)!;
@@ -194,7 +230,13 @@ export function createMockSearchService(opts: MockOptions = {}): SearchService {
         products,
         notes: [...removed, ...comp.notes],
       };
-      return { ...r, ...chatFields(r, "busca", turn) };
+      const out = { ...r, ...chatFields(r, refined ? "refinar" : "busca", turn, refined) };
+      // #59: "vitamina c" sozinha: o kit de pele fica, com atalho para o suplemento
+      if (/\bvitamina c\b/.test(parsed.normalized) && !/\b(serum|pele|rosto|mancha|suplemento|capsula|comprimido|efervescente)\b/.test(parsed.normalized) && intent.primaryGoal === "manchas") {
+        out.suggestions = ["Vitamina C suplemento", ...out.suggestions.filter((s) => s !== "Vitamina C suplemento")].slice(0, 3);
+        out.reply = `${out.reply} Se procura o suplemento, toque em “Vitamina C suplemento”.`;
+      }
+      return withAttention(out);
     },
 
     async similars(productId: string, storeId: string | null): Promise<SimilarsResponse> {

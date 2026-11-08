@@ -17,6 +17,20 @@ from __future__ import annotations
 
 TRAIN: dict[str, list[str]] = {
     "busca": [
+        # 08/11 (#50 a #59): frases achadas na varredura
+        "kit de higiene pra viagem",
+        "kit masculino",
+        "presente pra minha mãe",
+        "quero dar um presente pro meu marido",
+        "presente de aniversário pra minha amiga",
+        "presente pra minha avó",
+        "o que dar de presente pro meu irmão",
+        "remédio pra pressão",
+        "tenho alergia a niacinamida, quero kit pra acne",
+        "estou com febre alta há 3 dias",
+        "pele ressecada e repuxando depois do banho",
+        "kit para cabelo cacheado",
+        "vitamina c suplemento",
         "preciso de produtos para tratamento de acne",
         "quero começar a cuidar da pele até 120 reais",
         "quero fazer skin care",
@@ -98,6 +112,13 @@ TRAIN: dict[str, list[str]] = {
         "o que usar para a pele ficar lisinha",
     ],
     "refinar": [
+        # 08/11 (#49, #51, #56)
+        "tira o protetor",
+        "tira o que tem perfume",
+        "sem açúcar",
+        "não quero nada com perfume",
+        "pode tirar o hidratante",
+        "tira o sérum",
         "tira o que tem cheiro", "retira tudo que tem perfume",
         "dá pra baixar o preço", "isso tá muito salgado", "ficou pesado no bolso, tem algo mais em conta", "pode reduzir o valor",
         "quero uma opção mais top", "tem algo premium", "quero uma versão mais chique", "prefiro a opção mais cara e melhor",
@@ -271,6 +292,10 @@ TRAIN: dict[str, list[str]] = {
 
 TEST: dict[str, list[str]] = {
     "busca": [
+        "presente pro meu pai",
+        "remédio da pressão alta",
+        "sou alérgica a ácido salicílico, kit pra acne",
+        "febre que não baixa faz 4 dias",
         "preciso de um kit para pele com cravos e espinhas",
         "quero algo para clarear manchinhas no rosto",
         "me mostra suplementos de magnésio",
@@ -284,6 +309,8 @@ TEST: dict[str, list[str]] = {
         "remédio de alergia",
     ],
     "refinar": [
+        "tira o desodorante",
+        "sem glúten",
         "pode ser mais barato",
         "sem cheiro",
         "quero gastar menos de 90",

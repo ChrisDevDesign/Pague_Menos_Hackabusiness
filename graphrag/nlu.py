@@ -289,6 +289,8 @@ class Understander:
                     u.excluded_ingredients.append(k)
         # "sem fragrância" etc. não podem virar pedido do ingrediente; já são preferências.
         u.concerns = [c for c, _ in concern_hits.most_common()]
+        if not u.skin and "ressecamento" in concern_hits and re.search(r"\b(pele|rosto|cara)\b", q):
+            u.skin = "seca"                             # #59: "pele ressecada e repuxando" é pele seca
         for c, n in concern_hits.items():
             for g in self.cat.goals:
                 if c in g["concerns"]:

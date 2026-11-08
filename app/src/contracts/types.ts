@@ -210,7 +210,7 @@ export interface ChatContext {
 // Desde o doc 16 não existe bloqueio nem encaminhamento: medicamento é busca como outra qualquer.
 // Exceção estreita (#63): "urgent" = risco de vida ou sinal de alerta; resposta fixa, sem produtos.
 export type SafetyDecision = "allow" | "caution" | "urgent";
-export type SafetyCategory = "gestacao_e_ativos" | "risco_de_vida" | "sinal_de_alerta";
+export type SafetyCategory = "gestacao_e_ativos" | "risco_de_vida" | "sinal_de_alerta" | "procure_atendimento";
 
 export interface Safety {
   decision: SafetyDecision;
@@ -484,7 +484,7 @@ export const GOAL_LABEL: Record<GoalId, string> = {
   pele_sensivel: "Pele sensível",
   oleosidade: "Controle de oleosidade",
   suplementos: "Suplementos e vitaminas",
-  higiene_premium: "Higiene premium",
+  higiene_premium: "Higiene do dia a dia",   // #59: "premium" confundia quem pedia um kit simples
   dor_de_cabeca: "Dor de cabeça e febre",
   dor_no_corpo: "Dor no corpo",
   dor_muscular: "Dor muscular",

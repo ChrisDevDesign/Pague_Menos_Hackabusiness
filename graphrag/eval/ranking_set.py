@@ -23,6 +23,8 @@ TRAIN = [
     ("poros abertos no nariz", ("concern", "poros")),
     ("pele áspera e cheia de textura", ("concern", "textura")),
     ("gel de banho cremoso", ("step", "higiene_corpo")),
+    ("cabelo cacheado e ressecado", ("step", "higiene_cabelo")),
+    ("kit de viagem com sabonete e pasta de dente", ("step", "higiene_corpo", "higiene_oral")),
 ]
 
 TEST = [
@@ -40,6 +42,7 @@ TEST = [
     ("condicionador reparador premium", ("step", "higiene_cabelo")),
     ("vitamina d3 com k2", ("step", "vitaminas")),
     ("sabonete líquido corporal", ("step", "higiene_corpo")),
+    ("cachos sem frizz", ("step", "higiene_cabelo")),
 ]
 
 

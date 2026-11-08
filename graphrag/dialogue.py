@@ -30,7 +30,15 @@ from .nlu_corpus import TRAIN
 from .retrieval import Retriever, load_weights
 from .rewrite import rewrite_query
 from .quota import Quota
-from .safety import assess, urgency
+from .safety import assess, attention, urgency
+
+# #53: "tenho alergia a X" / "sou alérgica a X"; o que vem depois é testado como exclusão antes de trocar
+_ALLERGY = re.compile(r"(\b(?:tenho |sou |com )?(?:alergi\w*|alergic\w*) (?:a|ao|aos|as|com|de|pela|pelo) )([a-z0-9 -]+)")
+_ALLERGY_STOP = {"e", "mas", "quero", "queria", "preciso", "pra", "para", "me", "entao", "por", "que", "kit", "um", "uma"}
+_VIT_C = re.compile(r"\bvitamina c\b")
+_SKIN_WORDS = re.compile(r"\b(serum|pele|rosto|cara|mancha\w*|facial|clarear|olheira\w*|suplemento\w*|capsula\w*|comprimido\w*|efervescente|imunidade|gripe)\b")
+# #59: presente sem objetivo claro
+_GIFT = re.compile(r"\bpresente(ar|s)?\b|\bpresentear\b|\bde presente\b|\bpra dar (de presente|pra|para)\b")
 from .scope import MAX_LIST, VOTE_REL, Scope, ScopeResolver
 from .slang import FIGURATIVE
 from .spell import COMMON, Speller
@@ -245,10 +253,14 @@ class Engine:
         clean = FIGURATIVE.sub(" ", query)          # "me caguei de medo" não pode virar diarreia nem na recuperação
         # #24: "sem gel de limpeza" sai da frase já na entrada (recuperação, prateleira e objetivo usam a frase limpa);
         # os rótulos seguem no pedido e voltam no intent
+        clean = self._allergy(clean)               # #53: "alergia a niacinamida" é o que tirar, não o sintoma "alergia"
         ex = self.nlu.exclusions.read(clean)
         if ex:
             clean = ex.stripped
             req = {**req, "_exclude": list(ex.labels)}
+        gift = self._gift(req, clean)               # #59: "presente pra minha mãe": pergunta antes de chutar uma prateleira
+        if gift:
+            return {**gift, "query": orig_query}
         res = self._search(req, clean, orig_query)
         miss = res.pop("_miss", None)
         # #42: só vai à DeepSeek com allowExternal exatamente true (ou ausente, se o padrão for ligado); 0, "false" e null desligam
@@ -281,10 +293,54 @@ class Engine:
             res = self._med_missing(req, orig_query, res["safety"], carry, turn)
         if usable and self.writer:
             res = self._write(res)
+        # #59: "vitamina c" sozinha pode ser o sérum ou o suplemento: o kit de pele fica, e o atalho para o suplemento aparece
+        if (_VIT_C.search(norm(orig_query)) and not _SKIN_WORDS.search(norm(orig_query))
+                and (res.get("intent") or {}).get("primaryGoal") == "manchas"):
+            res["suggestions"] = ["Vitamina C suplemento"] + [s for s in (res.get("suggestions") or []) if s != "Vitamina C suplemento"][:2]
+            res["reply"] = f"{res.get('reply') or ''} Se procura o suplemento, toque em “Vitamina C suplemento”.".strip()
+        att = attention(orig_query) or attention(query)
+        if att and (res.get("safety") or {}).get("decision") != "urgent":   # #52: febre que dura ou não baixa
+            res["safety"] = att                             # o app mostra a orientação no quadro de atenção, antes da lista
         res["query"] = orig_query
         if fixes and clean == query and canon_state(norm(orig_query)) == norm(orig_query):      # texto reescrito pela regra do corpo não é "correção"
             res["correctedQuery"] = query
         return res
+
+    def _allergy(self, text: str) -> str:
+        """#53: "tenho alergia a niacinamida" vira "sem niacinamida" quando o que vem depois é ingrediente ou produto."""
+        def swap(m):
+            rest = m.group(2).split()
+            words = []
+            for w in rest[:3]:
+                if w in _ALLERGY_STOP:
+                    break
+                words.append(w)
+            term = " ".join(words)
+            if not term:
+                return m.group(0)
+            probe = self.nlu.understand("sem " + term)
+            if probe.excluded_ingredients or probe.excluded_labels:
+                return " ".join(["", "sem", term, *rest[len(words):], ""])   # o resto da frase ("quero kit pra acne") fica
+            return m.group(0)
+        q = norm(text)
+        out = _ALLERGY.sub(swap, q)
+        return text if out == q else out
+
+    def _gift(self, req: dict, query: str) -> dict | None:
+        """#59: "presente" sem objetivo claro: pergunta o que a pessoa gosta, em vez de mostrar uma prateleira qualquer."""
+        nq = norm(query)
+        if not _GIFT.search(nq):
+            return None
+        u = self.nlu.understand(query)
+        if u.primary_goal or u.goals:
+            return None
+        cin = req.get("context") or {}
+        carry = cin.get("intent") or {"goals": [], "primaryGoal": None, "budgetCents": None, "skinType": None, "preferences": [],
+                                      "pregnancy": False, "storeId": req.get("storeId"), "missing": []}
+        safety = {"decision": "allow"}
+        return self._basic(req, query, safety, carry, cin, int(cin.get("turn", 0)), "busca",
+                           "Que legal, um presente! Eu monto um kit pronto. A pessoa gosta mais de cuidar da pele, de itens de banho e higiene ou de suplementos?",
+                           ["Kit de skin care", "Kit de higiene", "Kit de suplementos"])
 
     def _write(self, res: dict) -> dict:
         """#26: só com kit montado, sem alerta de segurança e nunca para remédio (kit nunca tem remédio, K13)."""
@@ -453,6 +509,8 @@ class Engine:
                 act = u.act = "busca"
         if act == "negacao" and has_ctx and (u.excluded_ingredients or u.preferences or u.skin):
             act = u.act = "refinar"                      # "não quero ácido" no meio da conversa é ajuste, não um "não"
+        if req.get("_exclude") and has_ctx and not raw_tokens(query):
+            act = u.act = "refinar"                      # #51: "tira o protetor": a frase toda era a exclusão
         if act == "repor_medicamento" and not _MED.search(norm(query)) and (self.scope.match(query) or u.has_domain_signal):
             act = u.act = "busca"                       # "acabar com os cravos" não é reposição de remédio
         blank_intent = {"goals": [], "primaryGoal": None, "budgetCents": None, "skinType": None, "preferences": [],
@@ -520,7 +578,7 @@ class Engine:
                  "pregnancy": False, "storeId": carry.get("storeId"), "missing": []}
         return self._basic(req, query, safety, blank, {}, 0, "reiniciar",
                            "Pronto, recomeçamos. O que você procura hoje?",
-                           ["Kit de suplementos", "Higiene premium", "Rotina anti idade"], reset=True)
+                           ["Kit de suplementos", "Kit de higiene", "Rotina anti idade"], reset=True)
 
     def _affirm(self, req, query, u, safety, cin, carry, turn):
         ctx = build_ctx(self.cat, carry, cin.get("requested", []), cin.get("excluded", []))
@@ -528,7 +586,7 @@ class Engine:
         kit = self._focus_kit(kits, u.tier or cin.get("focusTier"))
         if not kit:
             return self._basic(req, query, safety, carry, cin, turn, "afirmacao",
-                               "Combinado. O que você gostaria de ver primeiro?", ["Kit de suplementos", "Higiene premium"])
+                               "Combinado. O que você gostaria de ver primeiro?", ["Kit de suplementos", "Kit de higiene"])
         return self._out(req, query, safety, carry, "afirmacao",
                          f"Ótimo! Separei o kit {TIER_NAME[kit['tier']]} ({money(kit['totalCents'])}). "
                          "Toque em “Adicionar à cesta” para seguir e escolher a entrega.",
@@ -667,7 +725,7 @@ class Engine:
                 or (not steps and scope.ingredients and not set(scope.ingredients) & other_ings)):   # "psyllium"
             return ["Mais barato", "Remédio para gripe", "Remédio para dor de cabeça"]
         if steps & {"higiene_corpo", "higiene_cabelo", "higiene_oral", "desodorante"}:
-            sug.insert(0, "Higiene premium")
+            sug.insert(0, "Kit de higiene")
         elif steps & {"omega3", "colageno", "magnesio", "vitaminas"}:
             sug.insert(0, "Kit de suplementos")
         elif steps & {"protecao_solar", "protecao_corporal"}:
@@ -721,7 +779,7 @@ class Engine:
         reply = (f"{notice['message']} Por aqui eu ajudo com cuidados com a pele, suplementos e higiene "
                  "(banho, cabelo, boca e desodorante).")
         return self._out(req, query, safety, intent, "busca", reply,
-                         suggestions=["Higiene premium", "Kit de suplementos", "Pele oleosa até R$ 100"],
+                         suggestions=["Kit de higiene", "Kit de suplementos", "Pele oleosa até R$ 100"],
                          catalog_notice=notice, scope_info={"kind": "absent", "label": notice["missing"][0], "items": 0},
                          ctx_out={"intent": intent, "requested": [], "excluded": [], "kits": [], "lastAct": "busca",
                                   "turn": turn + 1})
@@ -807,7 +865,7 @@ class Engine:
         if not intent.get("primaryGoal"):
             return self._basic(req, query, safety, intent, cin, turn, "refinar",
                                "Entendi. Me diga primeiro o que você procura (por exemplo, pele oleosa, suplementos ou higiene) "
-                               "e eu já aplico isso.", ["Kit de suplementos", "Higiene premium", "Pele oleosa"])
+                               "e eu já aplico isso.", ["Kit de suplementos", "Kit de higiene", "Pele oleosa"])
         proxy = Understanding(text=query, goals=intent["goals"], primary_goal=intent["primary_goal"] if "primary_goal" in intent else intent["primaryGoal"],
                               concerns=u.concerns, skin=intent.get("skinType"), preferences=intent["preferences"],
                               requested_ingredients=requested, excluded_ingredients=excluded, steps=[])
@@ -819,7 +877,7 @@ class Engine:
                                  change=self._change_text(prev_kits, comp, carry, intent, u))
         clar = {"id": "skinType", "question": "Como é a sua pele?", "options": SKIN_OPTIONS} if "skinType" in intent["missing"] else None
         res = self._out(req, query, safety, intent, "refinar", reply, kits_status=comp["status"], kits=comp["kits"],
-                        closest=comp["closestKit"], products=self.comp.rank_products(ctx, [], rel, limit=12),
+                        closest=comp["closestKit"], products=self.comp.rank_products(ctx, self._goal_steps(intent), rel, limit=12),
                         notes=comp["notes"], suggestions=self._suggest_after(comp, intent),
                         action={"type": "show_kits", **({"tier": focus} if focus else {})} if comp["kits"] else None,
                         clarification=clar,
@@ -827,6 +885,11 @@ class Engine:
         if noop:
             res["_miss"] = "ajuste"                      # "coisa mais top": lido como ajuste, mas nada mudou
         return res
+
+    def _goal_steps(self, intent: dict) -> list[str]:
+        """#57: depois de um ajuste, a lista abaixo dos kits só mostra itens das etapas do objetivo."""
+        g = self.cat.goal_by_id.get(intent.get("primaryGoal") or "")
+        return (g["required_steps"] + g["optional_steps"]) if g else []
 
     def _refine_list(self, req, query, u, safety, cin, intent, requested, excluded, turn):
         """"mais barato", "sem álcool", "vegano" depois de uma LISTA de itens (sem kit): refaz a mesma prateleira com o ajuste."""
@@ -870,7 +933,7 @@ class Engine:
         if not kit:
             return self._basic(req, query, safety, carry, cin, turn, "trocar_item",
                                "Ainda não tenho um kit para trocar itens. Me diga o que você procura e eu monto.",
-                               ["Kit de suplementos", "Higiene premium", "Pele oleosa até R$ 100"])
+                               ["Kit de suplementos", "Kit de higiene", "Pele oleosa até R$ 100"])
         steps_in_kit = [i["step"] for i in kit["items"]]
         step = next((s for s in u.steps if s in steps_in_kit), None)
         if step is None and u.product_ids:
@@ -923,7 +986,7 @@ class Engine:
                      f"agendada você escolhe o dia; as duas têm frete grátis a partir de {money(free)}. "
                      "Monte um kit e eu mostro o total com cada forma de entrega.")
             return self._out(req, query, safety, carry, "entrega_frete", reply,
-                             suggestions=["Kit de suplementos", "Higiene premium"],
+                             suggestions=["Kit de suplementos", "Kit de higiene"],
                              action={"type": "delivery_info"}, ctx_out={**cin, "lastAct": "entrega_frete", "turn": turn + 1} if cin else
                              {"intent": carry, "kits": [], "lastAct": "entrega_frete", "turn": turn + 1})
         quote = self.delivery_quote(kit["totalCents"])

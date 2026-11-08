@@ -86,6 +86,10 @@ TRAIN: list[tuple[str, tuple]] = [
     ("esmalte", ("absent",)),
     # --- saúde (recusa)
     ("que remédio eu tomo pra dor de cabeça", ("concern", "dor_de_cabeca", "enxaqueca")),
+    # --- 08/11 (#50, #54, #58)
+    ("remédio pra pressão", ("step", "reposicao")),
+    ("kit para cabelo cacheado", ("step", "higiene_cabelo")),
+    ("shampoo pra cabelo cacheado", ("step", "higiene_cabelo")),
 ]
 
 TEST: list[tuple[str, tuple]] = [
@@ -128,6 +132,9 @@ TEST: list[tuple[str, tuple]] = [
     ("protetor solar infantil", ("absent", "protecao_solar", "protecao_corporal")),
     ("perfume masculino", ("absent",)),
     ("preciso de um remédio para febre", ("concern", "febre")),
+    # --- 08/11 (#54, #58)
+    ("remédio da pressão alta", ("step", "reposicao")),
+    ("tenho cabelo cacheado", ("step", "higiene_cabelo")),
 ]
 
 

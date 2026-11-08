@@ -16,6 +16,22 @@ const ALERT = new RegExp(
 
 const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
+// #52 (auditoria 08/11): febre alta ou que dura 3 dias ou mais: a lista continua, com a orientação na frente. Espelho de
+// graphrag/safety.py (attention).
+export const ATTENTION_MESSAGE =
+  "Febre alta, que não baixa ou que dura 3 dias ou mais precisa ser avaliada: procure uma unidade de saúde ou um pronto-atendimento. Abaixo, os antitérmicos sem receita, para usar só como indicado na bula.";
+const ATTENTION = new RegExp(
+  "\\bfebre\\b[^.!?]{0,30}\\b(ha|por|faz|tem|desde|durante|ja sao|ja faz)\\b[^.!?]{0,12}\\b([3-9]|1[0-9]|tres|quatro|cinco|seis|sete|varios|muitos|mais de (2|3|dois|tres)) dias\\b" +
+    "|\\bfebre\\b[^.!?]{0,30}\\b(uma|1|mais de uma) semana\\b" +
+    "|\\bfebre (que )?nao (passa|baixa|cede|para|vai embora|abaixa)\\b" +
+    "|\\b([3-9]|tres|quatro|cinco|seis|sete) dias (de|com) febre\\b" +
+    "|\\bfebre (de |acima de |de quase )?39\\b|\\b39 (graus )?de febre\\b",
+);
+
+export function attention(text: string): Safety | null {
+  return ATTENTION.test(norm(text)) ? { decision: "caution", category: "procure_atendimento", message: ATTENTION_MESSAGE } : null;
+}
+
 export function urgency(text: string): Safety | null {
   const t = norm(text);
   if (CRISIS.test(t)) return { decision: "urgent", category: "risco_de_vida", message: CRISIS_MESSAGE };

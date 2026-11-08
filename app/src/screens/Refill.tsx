@@ -1,6 +1,9 @@
 // Meus medicamentos: REPOSIÇÃO do que a pessoa já usa (lista que fica no aparelho).
 // Os dados (itens, quantidades, receita) ficam no aparelho; o motor só devolve equivalentes a partir de um id de produto.
 import { useMemo, useRef, useState } from "react";
+import { WARN_DAYS, daysLeftOf, usageLine } from "../services/reminders";
+import { PRODUCT_BY_ID } from "../services/mock/catalogData";
+import { AddReminderSheet } from "../components/Reminders";
 import { TitleBar } from "../components/Bars";
 import { Icon } from "../components/Icon";
 import { ProductImage } from "../components/ProductImage";
@@ -14,10 +17,11 @@ import { useAsync } from "../useAsync";
 
 const PRES: Record<string, string> = { referencia: "Referência", generico: "Genérico", similar: "Similar" };
 
-export function Refill() {
+export function Refill({ add = false }: { add?: boolean }) {
   const { commerce } = useServices();
   const { push } = useNav();
-  const { store, storeId, dispatch, refillAuto, rxAttached, consent, refillPick, lines } = useApp();
+  const { store, storeId, dispatch, refillAuto, rxAttached, consent, refillPick, lines, reminders } = useApp();
+  const [adding, setAdding] = useState(add);
   const meds = PERSONA.continuousMedications;
   const ids = meds.map((m) => m.productId);
   const data = useAsync(async () => {
@@ -80,6 +84,30 @@ export function Refill() {
             <span className="link plain">Trocar</span>
           </button>
           <p className="privacy-line"><Icon name="lock" size={15} /> Esta lista fica só neste aparelho e não vai para o assistente de compras.</p>
+
+          {/* Experimento: avisos ligados pela pessoa (fluxos 1 a 5) e o "+ Adicionar item" (fluxo 5) */}
+          <section className="rem-list" aria-label="Avisos de reposição">
+            <div className="row" style={{ justifyContent: "space-between" }}>
+              <b>Avisos que você ligou</b>
+              <button className="btn outline blue rem-add" onClick={() => setAdding(true)}><Icon name="plus" size={18} /> Adicionar item</button>
+            </div>
+            {!reminders.length ? (
+              <p className="sheet-text">Nenhum ainda. Ligue um aviso ao terminar uma compra, na página de um produto ou aqui, e a gente avisa 5 dias antes de acabar.</p>
+            ) : reminders.map((r) => {
+              const p = PRODUCT_BY_ID.get(r.productId);
+              if (!p) return null;
+              const left = daysLeftOf(r);
+              return (
+                <div key={r.productId} className="rem-item">
+                  <ProductImage product={p} size={44} />
+                  <span className="grow"><b>{p.name}</b><small>{usageLine(r)}</small><span className="rem-src">entrou pelo fluxo {r.source}</span></span>
+                  <span className={`med-days${left <= WARN_DAYS ? "" : " calm"}`}>{left} dias</span>
+                  <button className="icon-btn" aria-label={`Apagar aviso de ${p.name}`} onClick={() => dispatch({ type: "remRemove", productId: r.productId })}><Icon name="trash" size={18} /></button>
+                </div>
+              );
+            })}
+          </section>
+          {adding ? <AddReminderSheet onClose={() => setAdding(false)} /> : null}
 
           {data.loading && !data.data ? <div className="skeleton" style={{ height: 220 }} /> : null}
           {data.error ? <div className="note danger" role="alert"><Icon name="alert" size={18} /><p>{data.error}</p></div> : null}

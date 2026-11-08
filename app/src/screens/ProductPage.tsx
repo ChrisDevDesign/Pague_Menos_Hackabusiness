@@ -1,4 +1,5 @@
 import { BasketButton } from "../components/Bars";
+import { canRemind } from "../services/reminders";
 import { OwnBrandTag } from "../components/OwnBrandTag";
 import { Icon } from "../components/Icon";
 import { discountPct } from "../components/ProductCard";
@@ -17,7 +18,7 @@ const NO_KIT_CONCERNS = new Set(["desmaquilagem", "textura", "olheiras"]);
 export function ProductPage({ id }: { id: string }) {
   const { commerce } = useServices();
   const { pop, push } = useNav();
-  const { dispatch, isFav, storeId, store } = useApp();
+  const { dispatch, isFav, storeId, store, remindIntent } = useApp();
   const data = useAsync(async () => {
     const [p, labels] = await Promise.all([commerce.product(id), commerce.labels()]);
     const stores = p ? await commerce.storesFor([p.id]) : [];
@@ -75,6 +76,18 @@ export function ProductPage({ id }: { id: string }) {
                   <button className="btn primary block" onClick={() => dispatch({ type: "addProduct", product: p })}>
                     <Icon name="basketPlus" /> Adicionar à cesta
                   </button>
+                  {/* Experimento, fluxo 1: só marca; a pergunta de verdade vem no fim da compra */}
+                  {canRemind(p) ? (
+                    remindIntent.includes(p.id) ? (
+                      <button className="rem-link on" onClick={() => dispatch({ type: "remIntent", productId: p.id, on: false })}>
+                        <Icon name="checkCircle" size={18} /> Combinado: no fim da compra perguntamos quando avisar · desfazer
+                      </button>
+                    ) : (
+                      <button className="rem-link" onClick={() => dispatch({ type: "remIntent", productId: p.id, on: true })}>
+                        <Icon name="bell" size={18} /> Avisar quando acabar
+                      </button>
+                    )
+                  ) : null}
                 </>
               ) : (
                 <>

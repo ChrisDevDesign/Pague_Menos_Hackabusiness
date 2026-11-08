@@ -8,6 +8,7 @@ export { RX_MAX_QTY };
 import { readExternalChoice, saveExternalChoice } from "../services/consentStorage";
 import { externalLanguage } from "../services/searchService";
 import { newSubscription, sampleSubscription, type Subscription } from "../services/subscriptions";
+import type { Reminder } from "../services/reminders";
 export type { Subscription };
 
 export type SubscriptionDays = 0 | 30 | 60;
@@ -66,6 +67,13 @@ interface State {
   orders: Order[];
   /** Assinaturas de kit (#9): criadas ao fechar o pedido; editáveis em Mais > Assinaturas. */
   subscriptions: Subscription[];
+  /** Experimento Hora de repor: avisos ligados pela pessoa, ids marcados na página do produto, consentimento e
+   *  pedidos em que ela tocou "Agora não" (o fluxo 3 lembra uma vez depois). */
+  reminders: Reminder[];
+  remindIntent: string[];
+  reminderConsentAt: string | null;
+  reminderSkipped: string[];
+  reminderNudged: string[];
   walletPendingCents: number;
   toast: { text: string; action?: "cart" } | null;
 }
@@ -99,6 +107,12 @@ type Action =
   | { type: "placeOrder"; order: Order }
   | { type: "subSet"; sub: Subscription; toast?: string }
   | { type: "subCancel"; id: string }
+  | { type: "remAdd"; reminders: Reminder[] }
+  | { type: "remRemove"; productId: string }
+  | { type: "remIntent"; productId: string; on: boolean }
+  | { type: "remSkip"; orderId: string }
+  | { type: "remNudged"; orderId: string }
+  | { type: "remDemoReset" }
   | { type: "clearSession" }
   | { type: "toast"; text: string; action?: "cart" }
   | { type: "hideToast" };
@@ -233,6 +247,26 @@ export function reducer(s: State, a: Action): State {
       };
     case "subSet":
       return { ...s, subscriptions: s.subscriptions.map((x) => (x.id === a.sub.id ? a.sub : x)), toast: a.toast ? { text: a.toast } : s.toast };
+    case "remAdd": {
+      const ids = new Set(a.reminders.map((r) => r.productId));
+      return {
+        ...s,
+        reminders: [...s.reminders.filter((r) => !ids.has(r.productId)), ...a.reminders],
+        remindIntent: s.remindIntent.filter((id) => !ids.has(id)),
+        reminderConsentAt: s.reminderConsentAt ?? new Date().toISOString(),   // o toque em "Ativar" é o consentimento
+        toast: { text: a.reminders.length === 1 ? "Aviso ligado. Avisamos 5 dias antes de acabar." : `${a.reminders.length} avisos ligados. Avisamos 5 dias antes de acabar.` },
+      };
+    }
+    case "remRemove":
+      return { ...s, reminders: s.reminders.filter((r) => r.productId !== a.productId), toast: { text: "Aviso desligado e apagado deste aparelho." } };
+    case "remIntent":
+      return { ...s, remindIntent: a.on ? [...new Set([...s.remindIntent, a.productId])] : s.remindIntent.filter((x) => x !== a.productId) };
+    case "remSkip":
+      return { ...s, reminderSkipped: [...new Set([...s.reminderSkipped, a.orderId])] };
+    case "remDemoReset":   // experimento: cada quadrado começa com o histórico de pedidos limpo (os avisos ligados ficam)
+      return { ...s, orders: [], reminderSkipped: [], reminderNudged: [] };
+    case "remNudged":
+      return { ...s, reminderNudged: [...new Set([...s.reminderNudged, a.orderId])] };
     case "subCancel":
       return { ...s, subscriptions: s.subscriptions.filter((x) => x.id !== a.id), toast: { text: "Assinatura cancelada. Nenhum envio novo será feito." } };
     case "clearSession":   // "Apagar cesta e pedidos deste aparelho" (Privacidade)
@@ -274,6 +308,11 @@ export const initialState: State = {
   mode: null,
   orders: [],
   subscriptions: [],
+  reminders: [],
+  remindIntent: [],
+  reminderConsentAt: null,
+  reminderSkipped: [],
+  reminderNudged: [],
   walletPendingCents: 0,
   toast: null,
 };

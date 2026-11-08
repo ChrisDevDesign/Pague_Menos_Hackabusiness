@@ -1,4 +1,8 @@
 import { PersonaAvatar } from "../components/Avatar";
+import { lineProducts } from "../state/app";
+import { ReminderOffer } from "../components/Reminders";
+import { BottomSheet } from "../components/BottomSheet";
+import { useState } from "react";
 import { HScroll } from "../components/HScroll";
 import { BasketButton } from "../components/Bars";
 import { Icon, LogoMark } from "../components/Icon";
@@ -22,7 +26,9 @@ function greeting(): string {
 export function Home() {
   const { push, goTab } = useNav();
   const { commerce } = useServices();
-  const { store, storeId, consent } = useApp();
+  const { store, storeId, consent, orders, reminderSkipped, reminderNudged, dispatch } = useApp();
+  const [nudgeOpen, setNudgeOpen] = useState(false);
+  const nudgeOrder = orders.find((o) => reminderSkipped.includes(o.id) && !reminderNudged.includes(o.id)) ?? null;
   const due = PERSONA.continuousMedications.filter((m) => needsRefill(m)).length;
   const soonest = Math.min(...PERSONA.continuousMedications.map(daysLeft));
   // quanto ainda resta do remédio que acaba primeiro (barra do cartão de reposição, #17)
@@ -69,6 +75,25 @@ export function Home() {
         </div>
 
         <div className="pad">
+          {/* Experimento, fluxo 3: quem tocou "Agora não" no fim do pedido recebe UM lembrete depois */}
+          {nudgeOrder ? (
+            <section className="rem-nudge" aria-label="Lembrete de reposição">
+              <span className="rem-bell"><Icon name="box" size={20} /></span>
+              <span className="grow">
+                <b>Chegou tudo do pedido {nudgeOrder.id}?</b>
+                <small>Quer ser avisado antes do próximo acabar?</small>
+              </span>
+              <span className="rem-nudge-actions">
+                <button className="btn primary" onClick={() => setNudgeOpen(true)}>Ver itens</button>
+                <button className="link plain" onClick={() => dispatch({ type: "remNudged", orderId: nudgeOrder.id })}>Não, obrigado</button>
+              </span>
+            </section>
+          ) : null}
+          {nudgeOpen && nudgeOrder ? (
+            <BottomSheet title="Avisar quando acabar" onClose={() => { setNudgeOpen(false); dispatch({ type: "remNudged", orderId: nudgeOrder.id }); }}>
+              <ReminderOffer products={nudgeOrder.lines.flatMap(lineProducts)} source={3} title="Quais destes você quer que a gente avise?" />
+            </BottomSheet>
+          ) : null}
           {/* #29 e #17: Meus medicamentos sempre no topo; vira "Hora de repor" quando algo está acabando.
               O nome dos remédios não aparece aqui (rótulo privado, só em "Meus medicamentos"). */}
           {consent.refillReminders && due > 0 ? (

@@ -8,7 +8,7 @@ export type View =
   | { name: "home" }
   | { name: "searchFocus"; initial?: string; voice?: boolean }
   | { name: "chat"; initial?: string }
-  | { name: "refill" }
+  | { name: "refill"; add?: boolean }
   | { name: "privacy" }
   | { name: "results"; req: SearchRequest }
   | { name: "categorias" }

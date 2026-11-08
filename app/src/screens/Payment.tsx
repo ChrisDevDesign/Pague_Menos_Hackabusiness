@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { ReminderOffer } from "../components/Reminders";
 import { TitleBar } from "../components/Bars";
 import { Icon } from "../components/Icon";
 import { useNav, useServices } from "../nav";
 import { money } from "../services/format";
 import { rxPending, rxProducts, useApp, type Order } from "../state/app";
+import { lineProducts } from "../state/app";
 import { useAsync } from "../useAsync";
 import { feeFor } from "./Delivery";
 
@@ -91,9 +93,17 @@ export function Payment() {
 }
 
 export function Confirmation({ orderId }: { orderId: string }) {
-  const { orders } = useApp();
+  const { orders, dispatch, reminderSkipped } = useApp();
   const { replace, resetTo } = useNav();
   const o = orders.find((x) => x.id === orderId);
+  // Experimento, fluxos 2 e 4: itens do pedido que fazem sentido repor; o que já veio em pedido anterior ganha destaque
+  const bought = o ? o.lines.flatMap(lineProducts) : [];
+  const before = new Map<string, string>();
+  for (const old of orders) {
+    if (!o || old.id === o.id || Date.parse(old.createdAt) >= Date.parse(o.createdAt)) continue;
+    for (const p of old.lines.flatMap(lineProducts)) if (!before.has(p.id)) before.set(p.id, new Date(old.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }));
+  }
+  const skipped = !!o && reminderSkipped.includes(o.id);
   return (
     <div className="screen">
       <TitleBar title="Pedido realizado" back={false} />
@@ -109,6 +119,12 @@ export function Confirmation({ orderId }: { orderId: string }) {
               {o.status}
               {o.cashbackCents ? <><br />{money(o.cashbackCents)} de cashback a receber (simulado)</> : null}
             </p>
+          ) : null}
+          {o && !skipped ? (
+            <div style={{ width: "100%", textAlign: "left" }}>
+              <ReminderOffer products={bought} source={before.size ? 4 : 2} boughtBefore={before.size ? before : undefined}
+                onSkip={() => dispatch({ type: "remSkip", orderId: o.id })} />
+            </div>
           ) : null}
           <div className="note" style={{ textAlign: "left" }}><Icon name="info" size={18} /><p>Demonstração: nada foi cobrado e o pedido não foi enviado a nenhuma loja; ele fica só neste navegador. As frases da busca seguem as regras de Privacidade e dados.</p></div>
           <button className="btn primary block" onClick={() => replace({ name: "orders" })}>Ver meus pedidos</button>

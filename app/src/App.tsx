@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from "react";
+import { DemoBar } from "./components/DemoBar";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { RxPrompt } from "./components/RxPrompt";
 import { TabBar } from "./components/TabBar";
@@ -33,6 +34,7 @@ export function App() {
       <AppProvider>
         <NavProvider>
           <div className="stage">
+            <DemoBar />
             <main className="phone" aria-label="Aplicativo da farmácia (protótipo)">
               <ErrorBoundary><Shell /></ErrorBoundary>
             </main>
@@ -86,7 +88,7 @@ function Screen() {
     case "searchFocus": return <SearchFocus initial={view.initial} voice={view.voice} />;
     case "results": return <Results req={view.req} />;
     case "chat": return <Chat initial={view.initial} />;
-    case "refill": return <Refill />;
+    case "refill": return <Refill add={view.add} />;
     case "privacy": return <Privacy />;
     case "categorias": return <CategoriesList />;
     case "prescriptions": return <Prescriptions />;

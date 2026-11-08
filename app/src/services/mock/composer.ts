@@ -86,7 +86,7 @@ export function baseEligible(p: Product, ctx: Ctx, relaxSkin = false): boolean {
   if (stockAt(p.id, ctx.storeId) <= 0) return false;
   if (isExcluded(p, ctx.excl)) return false;
   if (ctx.pregnancy && p.warnings.includes("consultar_se_gestante")) return false;
-  if (!ctx.prefs.every((pref) => p.claims.includes(pref))) return false;
+  if (!ctx.prefs.every((pref) => prefOk(p, pref))) return false;
   if (!relaxSkin) {
     const skin = ctx.skinType ?? ctx.assumedSkin;
     if (skin && !(p.skinTypes.includes("todas") || p.skinTypes.includes(skin))) return false;
@@ -136,12 +136,23 @@ function specialtyMismatch(p: Product, ctx: Ctx): boolean {
   return p.concerns.some((c) => SPECIALTY.has(c) && !ctx.concerns.has(c));
 }
 
+// #50: o produto principal de cada etapa de higiene (igual ao motor)
+const CORE_TYPES: Partial<Record<StepId, string[]>> = {
+  higiene_corpo: ["sabonete", "gel de banho", "óleo de banho"],
+  higiene_cabelo: ["shampoo", "condicionador"],
+  higiene_oral: ["creme dental"],
+};
+const CORE_NAMES: Partial<Record<StepId, string>> = { higiene_corpo: "sabonete", higiene_cabelo: "shampoo", higiene_oral: "creme dental" };
+
 export function candidatesFor(step: StepId, ctx: Ctx): { list: Product[]; relaxed: boolean } {
   const pool = KIT_POOL.filter((p) => p.coversSteps.includes(step));
   const filt = (relax: boolean) => {
-    const base = pool.filter(
+    const all = pool.filter(
       (p) => baseEligible(p, ctx, relax) && (!NEEDS_CONCERN_MATCH.includes(step) || concernMatch(p, ctx)),
     );
+    // #50: sabonete, shampoo e creme dental antes de acessório (pente, algodão, esponja)
+    const core = CORE_TYPES[step] ? all.filter((p) => CORE_TYPES[step]!.some((t) => p.productType.toLowerCase().startsWith(t))) : [];
+    const base = core.length ? core : all;
     if (!GENERIC_STEPS.includes(step)) return base;
     const clean = base.filter((p) => !specialtyMismatch(p, ctx));
     return clean.length >= 3 ? clean : base;
@@ -502,6 +513,9 @@ export function compose(ctx: Ctx, requestId: string): Composition {
     const { list, relaxed: r } = candidatesFor(step, ctx);
     if (list.length === 0) continue;
     if (r) relaxed.push(step);
+    // #50: a preferência deixou só acessório nesta etapa de higiene: avisa
+    if (CORE_TYPES[step] && ctx.prefs.length && !list.some((p) => CORE_TYPES[step]!.some((t) => p.productType.toLowerCase().startsWith(t))))
+      notes.push(`Não achei ${CORE_NAMES[step]} ${listPt(ctx.prefs)}; na etapa de ${STEP_LABEL[step].toLowerCase()} entrou um acessório.`);
     full.set(step, list);
     short.set(step, shortlist(list, ctx));
   }
@@ -512,7 +526,10 @@ export function compose(ctx: Ctx, requestId: string): Composition {
       status: "not_applicable",
       kits: [],
       closestKit: null,
-      notes: ["Não encontramos produtos suficientes para montar um kit completo com essas preferências."],
+      // #49: diz o que faltou, em vez de uma frase genérica
+      notes: [required.some((s) => !short.has(s)) && ctx.prefs.length
+        ? `Não achei ${listPt(required.filter((s) => !short.has(s)).map((s) => STEP_LABEL[s].toLowerCase()))} ${listPt(ctx.prefs)} para fechar o kit; deixei a lista de produtos abaixo.`
+        : "Não encontramos produtos suficientes para montar um kit completo com essas preferências."],
     };
   }
   for (const s of relaxed.filter((x) => required.includes(x))) {
@@ -607,7 +624,8 @@ export function rankProducts(ctx: Ctx, limit = 30): Product[] {
   const goal = GOALS.find((g) => g.id === ctx.primary)!;
   const goalSteps = new Set([...goal.requiredSteps, ...goal.optionalSteps]);
   // objetivo de saúde lista o que trata aquele objetivo (remédio ou não, ex.: psyllium); os demais não listam remédio
-  const same = med ? PRODUCTS.filter((p) => p.coversSteps.some((s) => goalSteps.has(s))) : PRODUCTS.filter((p) => p.domain !== "medicamento");
+  // #57: a lista fica nas etapas do objetivo (antes, "sem fragrância" no kit de acne trazia talco para pés)
+  const same = PRODUCTS.filter((p) => (med || p.domain !== "medicamento") && p.coversSteps.some((s) => goalSteps.has(s)));
   const strict = same.filter((p) => baseEligible(p, ctx, false));
   const pool = strict.length >= 8 ? strict : same.filter((p) => baseEligible(p, ctx, true));
   // #44 (RDC 96/2008): pelo sintoma, remédio de venda livre vem antes do de receita (igual ao motor)
@@ -728,4 +746,18 @@ export function adaptToStore(kit: Kit, storeId: string, ctx: Ctx): Adaptation | 
     replaced.push({ step: item.step, from: item.product, to: pick.product });
   }
   return { kit: { ...current, storeId }, replaced };
+}
+
+// #49: preferência "sem X" só vale para o tipo de produto que pode ter X (igual ao motor)
+const PREF_NOT_FOR: Record<string, string[]> = { "sem fragrância": ["pente", "escova", "fio dental", "fita dental", "algodão", "cotonete", "bucha", "esponja", "luva", "creme dental", "enxaguante"] };
+const PREF_ONLY_FOR: Record<string, string[]> = { "sem alumínio": ["desodorante"] };
+// #56: cápsula e comprimido não têm açúcar
+const PREF_FORM_OK: Record<string, string[]> = { "sem açúcar": ["caps", "tablet", "softgel"] };
+export function prefOk(p: Product, pref: string): boolean {
+  if (p.claims.includes(pref)) return true;
+  const kind = p.productType.toLowerCase();
+  if (PREF_NOT_FOR[pref]?.some((t) => kind.startsWith(t))) return true;
+  if (PREF_ONLY_FOR[pref] && !PREF_ONLY_FOR[pref].some((t) => kind.includes(t))) return true;
+  if (PREF_FORM_OK[pref]?.includes(p.form)) return true;
+  return false;
 }

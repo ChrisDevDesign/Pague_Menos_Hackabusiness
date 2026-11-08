@@ -20,6 +20,31 @@ from .exclusions import ExclusionReader, Exclusions, excluded as _excluded
 SPECIALTY = {"acne", "manchas", "sinais_idade", "olheiras", "textura"}
 TIER_BONUS = {"intermediario": 2, "premium": 1}   # desempate por faixa de preço; não conta como "item melhor" no Completo
 GENERIC_STEPS = ["limpeza", "hidratacao", "protecao_solar", "protecao_corporal"]
+# #49: preferência "sem X" só vale para o tipo de produto que pode ter X. Pente, escova e fio dental não têm perfume;
+# alumínio só existe em desodorante. Fora disso o item continua valendo, em vez de travar o kit inteiro.
+PREF_NOT_FOR = {"sem fragrância": ("pente", "escova", "fio dental", "fita dental", "algodão", "cotonete", "bucha", "esponja",
+                                   "luva", "creme dental", "enxaguante")}
+PREF_ONLY_FOR = {"sem alumínio": ("desodorante",)}
+# #56: cápsula e comprimido não têm açúcar; o selo só faz diferença em pó, goma e bebida
+PREF_FORM_OK = {"sem açúcar": ("caps", "tablet", "softgel")}
+# #50: num kit, cada etapa de higiene leva o produto principal; acessório (pente, algodão, esponja...) só se não houver
+CORE_TYPES = {"higiene_corpo": ("sabonete", "gel de banho", "oleo de banho", "óleo de banho"),
+              "higiene_cabelo": ("shampoo", "condicionador"),
+              "higiene_oral": ("creme dental",)}
+CORE_NAMES = {"higiene_corpo": "sabonete", "higiene_cabelo": "shampoo", "higiene_oral": "creme dental"}
+
+
+def pref_ok(p: dict, pref: str) -> bool:
+    if pref in p["claims"]:
+        return True
+    kind = p.get("productType", "").lower()
+    if pref in PREF_NOT_FOR and any(kind.startswith(t) for t in PREF_NOT_FOR[pref]):
+        return True
+    if pref in PREF_ONLY_FOR and not any(t in kind for t in PREF_ONLY_FOR[pref]):
+        return True
+    if pref in PREF_FORM_OK and p.get("form") in PREF_FORM_OK[pref]:
+        return True
+    return False
 NEEDS_CONCERN_MATCH = ["tratamento", "preparo", "complemento"]
 GENERIC_ING = {"glicerina", "tensoativo_suave", "filtro_uv", "aloe_vera"}
 DEFAULT_REASON = {
@@ -154,7 +179,7 @@ class Composer:
             return False
         if _excluded(p, ctx.excl):
             return False
-        if not all(pref in p["claims"] for pref in ctx.prefs):
+        if not all(pref_ok(p, pref) for pref in ctx.prefs):
             return False
         if not relax_skin:
             skin = ctx.eff_skin
@@ -205,6 +230,9 @@ class Composer:
         def filt(relax: bool):
             base = [p for p in pool if self.base_eligible(p, ctx, relax)
                     and (step not in NEEDS_CONCERN_MATCH or any(c in ctx.concerns for c in p["concerns"]))]
+            if step in CORE_TYPES:                       # #50: sabonete, shampoo e creme dental antes de acessório
+                core = [p for p in base if p.get("productType", "").lower().startswith(CORE_TYPES[step])]
+                base = core or base
             if step not in GENERIC_STEPS:
                 return base
             clean = [p for p in base if not self.specialty_mismatch(p, ctx)]
@@ -432,14 +460,19 @@ class Composer:
             lst, r = self.candidates_for(step, ctx)
             if not lst:
                 continue
+            if step in CORE_TYPES and ctx.prefs and not any(p.get("productType", "").lower().startswith(CORE_TYPES[step]) for p in lst):
+                notes.append(f"Não achei {CORE_NAMES[step]} {_list_pt(ctx.prefs)}; na etapa de {self.cat.steps[step].lower()} entrou um acessório.")
             if r:
                 relaxed.append(step)
             full[step] = lst
             short[step] = self.shortlist(lst, ctx)
         required = [s for s in goal["required_steps"] if s not in gone]
         if not required or any(s not in short for s in required):
-            return {"status": "not_applicable", "kits": [], "closestKit": None,
-                    "notes": ["Não encontramos produtos suficientes para montar um kit completo com essas preferências."]}
+            missing = [self.cat.steps[s].lower() for s in required if s not in short]
+            # #49: diz o que faltou, em vez de uma frase genérica
+            why = (f"Não achei {_list_pt(missing)} {_list_pt(ctx.prefs)} para fechar o kit; deixei a lista de produtos abaixo."
+                   if missing and ctx.prefs else "Não encontramos produtos suficientes para montar um kit completo com essas preferências.")
+            return {"status": "not_applicable", "kits": [], "closestKit": None, "notes": [why]}
         for s in [x for x in relaxed if x in required]:
             if s in ("limpeza", "preparo", "tratamento", "hidratacao", "protecao_solar", "protecao_corporal", "complemento"):
                 notes.append(f"Há poucos produtos de {self.cat.steps[s].lower()} para pele {ctx.eff_skin}; incluímos o mais próximo.")
@@ -601,3 +634,8 @@ class Composer:
                                    "reason": f"Trocado por falta de estoque na loja. {self.explain_item(pick['product'], sctx, item['step'])}"}
             replaced.append({"step": item["step"], "from": item["product"], "to": pick["product"]})
         return {"kit": {**current, "storeId": store_id}, "replaced": replaced}
+
+
+def _list_pt(xs: list[str]) -> str:
+    xs = list(xs)
+    return xs[0] if len(xs) == 1 else ", ".join(xs[:-1]) + " e " + xs[-1] if xs else ""

@@ -116,4 +116,16 @@ EXTRA_PARAPHRASES: list[str] = [
     "depilação cera lâmina de barbear espuma de barbear pós barba",
     "repelente inseticida mosquito pernilongo citronela",
     "termômetro curativo gaze esparadrapo álcool algodão cotonete",
+    # ---- 08/11 (#50 a #59)
+    "kit de viagem higiene basica sabonete shampoo creme dental desodorante necessaire",
+    "kit de higiene do dia a dia banho sabonete liquido shampoo condicionador creme dental",
+    "presente para mae pai amiga namorada kit pronto skin care higiene suplementos",
+    "remedio pra pressao alta hipertensao anti hipertensivo tensivalol pressolan uso continuo receita",
+    "remedio da pressao controlar a pressao comprimido de uso continuo",
+    "cabelo cacheado cachos definidos crespo shampoo condicionador creme para pentear mascara capilar",
+    "kit masculino homem pele masculina skin care gel de limpeza hidratante protetor solar",
+    "pele ressecada repuxando depois do banho pele seca hidratante ceramidas",
+    "febre alta que nao baixa antitermico dipirona paracetamol",
+    "alergia a ingrediente sem niacinamida sem acido salicilico sem fragrancia",
+    "vitamina c suplemento efervescente comprimido imunidade",
 ]

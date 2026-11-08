@@ -12048,11 +12048,9 @@
   ],
   "fps": null,
   "usagePeriod": "dia_noite",
-  "claims": [
-   "sem fragrância"
-  ],
+  "claims": [],
   "warnings": [],
-  "description": "Gel de Banho Relaxante Lavanda: produto de higiene (gel de banho) da marca Noble Banho. Foco em higiene diária e cuidado com o corpo. Componentes: Glicerina. Sem fragrância.",
+  "description": "Gel de Banho Relaxante Lavanda: produto de higiene (gel de banho) da marca Noble Banho. Foco em higiene diária e cuidado com o corpo. Componentes: Glicerina.",
   "howToUse": "Use no banho, massageie e enxágue.",
   "priceTier": "premium",
   "priceCents": 3290,
@@ -13719,11 +13717,9 @@
   ],
   "fps": null,
   "usagePeriod": "dia_noite",
-  "claims": [
-   "sem fragrância"
-  ],
+  "claims": [],
   "warnings": [],
-  "description": "Talco para Pés Antiodor: produto de higiene (talco para pés) da marca Noble Banho. Foco em cuidado com o corpo. Componentes: Talco mineral e Extrato de menta. Sem fragrância.",
+  "description": "Talco para Pés Antiodor: produto de higiene (talco para pés) da marca Noble Banho. Foco em cuidado com o corpo. Componentes: Talco mineral e Extrato de menta.",
   "howToUse": "Use no banho, massageie e enxágue.",
   "priceTier": "intermediario",
   "priceCents": 1590,
@@ -13814,11 +13810,9 @@
   ],
   "fps": null,
   "usagePeriod": "dia_noite",
-  "claims": [
-   "sem fragrância"
-  ],
+  "claims": [],
   "warnings": [],
-  "description": "Talco Refrescante Menta: produto de higiene (talco corporal) da marca Noble Banho. Foco em cuidado com o corpo. Componentes: Talco mineral e Extrato de menta. Sem fragrância.",
+  "description": "Talco Refrescante Menta: produto de higiene (talco corporal) da marca Noble Banho. Foco em cuidado com o corpo. Componentes: Talco mineral e Extrato de menta.",
   "howToUse": "Use no banho, massageie e enxágue.",
   "priceTier": "intermediario",
   "priceCents": 1690,

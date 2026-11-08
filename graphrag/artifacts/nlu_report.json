@@ -1,16 +1,16 @@
 {
- "treino": 287,
- "teste": 65,
- "acertos": 61,
- "acuracia": 0.9385,
+ "treino": 306,
+ "teste": 71,
+ "acertos": 67,
+ "acuracia": 0.9437,
  "porAto": {
   "busca": {
-   "acertos": 11,
-   "total": 11
+   "acertos": 15,
+   "total": 15
   },
   "refinar": {
-   "acertos": 5,
-   "total": 6
+   "acertos": 7,
+   "total": 8
   },
   "trocar_item": {
    "acertos": 5,

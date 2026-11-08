@@ -35,7 +35,7 @@ add("Noble Banho", "Sabonete em Barra Hidratante", "sabonete em barra", "higiene
     ["higiene_diaria", "cuidado_corporal"], ["glicerina", "manteiga_karite"], None, "dia_noite", 12.90,
     [VG, "sem parabenos"], [], [])
 add("Noble Banho", "Gel de Banho Relaxante Lavanda", "gel de banho", "higiene_corpo", "higiene", "bottle", "300 ml", "T",
-    ["higiene_diaria", "cuidado_corporal"], ["glicerina"], None, "dia_noite", 32.90, [SF], [], [])
+    ["higiene_diaria", "cuidado_corporal"], ["glicerina"], None, "dia_noite", 32.90, [], [], [])   # #55: lavanda tem perfume
 add("Noble Banho", "Óleo de Banho Nutritivo", "óleo de banho", "higiene_corpo", "higiene", "bottle", "200 ml", "T",
     ["cuidado_corporal"], ["manteiga_karite", "oleo_argan"], None, "dia_noite", 49.90, [VG], [], [])
 
@@ -123,11 +123,11 @@ add("Sorriso Pleno", "Fio Dental Deslizante", "fio dental", "higiene_oral", "hig
 add("Noble Banho", "Talco Corporal Clássico", "talco corporal", "higiene_corpo", "higiene", "bottle", "100 g", "T",
     ["cuidado_corporal"], ["talco_mineral"], None, "dia_noite", 12.90, [SF], [], [])
 add("Noble Banho", "Talco para Pés Antiodor", "talco para pés", "higiene_corpo", "higiene", "bottle", "100 g", "T",
-    ["cuidado_corporal"], ["talco_mineral", "menta_extrato"], None, "dia_noite", 15.90, [SF], [], [])
+    ["cuidado_corporal"], ["talco_mineral", "menta_extrato"], None, "dia_noite", 15.90, [], [], [])   # #55: menta
 add("Noble Banho", "Talco Corporal com Amido de Milho", "talco corporal", "higiene_corpo", "higiene", "bottle", "100 g", "T",
     ["cuidado_corporal"], ["amido_milho"], None, "dia_noite", 14.90, [SF], [], [])
 add("Noble Banho", "Talco Refrescante Menta", "talco corporal", "higiene_corpo", "higiene", "bottle", "100 g", "T",
-    ["cuidado_corporal"], ["talco_mineral", "menta_extrato"], None, "dia_noite", 16.90, [SF], [], [])
+    ["cuidado_corporal"], ["talco_mineral", "menta_extrato"], None, "dia_noite", 16.90, [], [], [])   # #55: menta
 add("Noble Banho", "Talco para Pés com Aloe", "talco para pés", "higiene_corpo", "higiene", "bottle", "100 g", "T",
     ["cuidado_corporal"], ["talco_mineral", "aloe_vera"], None, "dia_noite", 17.90, [SF], [], [])
 add("Noble Banho", "Talco Corporal Suave", "talco corporal", "higiene_corpo", "higiene", "bottle", "100 g", "T",

@@ -44,7 +44,7 @@ const EXTRA_SYNONYMS: Partial<Record<GoalId, string[]>> = {
   manchas: ["vitamina c"],
   protecao_solar: ["bloqueador"],
   suplementos: ["omega", "ômega", "colageno", "colágeno", "magnesio", "magnésio", "suplemento", "vitamina d"],
-  higiene_premium: ["higiene", "shampoo", "condicionador", "creme dental", "desodorante"],
+  higiene_premium: ["higiene", "creme dental", "desodorante"],   // #58: "cabelo" e "shampoo" sozinhos viram lista de cabelo, como no motor
 };
 
 const SKIN_PATTERNS: Array<[RegExp, SkinType]> = [
@@ -58,8 +58,11 @@ const SKIN_PATTERNS: Array<[RegExp, SkinType]> = [
 // preferência -> claim do catálogo
 const PREFERENCE_PATTERNS: Array<[RegExp, string]> = [
   [/\b(vegano|vegana|veganos|veganas)\b/, "vegano"],
-  [/\b(sem fragrancia|sem perfume)\b/, "sem fragrância"],
+  // #49: também "tira o que tem perfume", "não quero cheiro"
+  [/\b(sem fragrancia|sem perfume|sem cheiro)\b|\b(tira|tire|tirar|remove|nao quero)\b[^.,;]{0,24}\b(perfume|fragrancia|cheiro)\b/, "sem fragrância"],
   [/\b(sem alcool)\b/, "sem álcool"],
+  [/\b(sem acucar|zero acucar)\b/, "sem açúcar"],   // #56
+  [/\b(sem gluten)\b/, "sem glúten"],
   [/\b(oil[- ]?free|sem oleo)\b/, "oil free"],
   [/\b(mineral)\b/, "filtro mineral"],
   [/\b(com cor|colorido)\b/, "com cor"],
@@ -94,7 +97,10 @@ export function parseIntent(req: SearchRequest): ParsedIntent {
   const full = norm(req.query);
   // #24/#25: "sem X" sai da frase antes de procurar objetivo, pele e etapa ("sem gel de limpeza" não é pedido de limpeza)
   const excl = parseExclusions(full);
-  const q = excl.stripped || full;
+  // #51: "tira o protetor": a frase toda era a exclusão; nada sobra para virar objetivo novo (a conversa segue com o anterior)
+  const q0 = excl.labels.length && !(excl.stripped ?? "").trim() ? "" : excl.stripped || full;
+  // #59: "pele ressecada depois do banho" fala da pele, não pede produto de banho (igual ao motor)
+  const q = /\b(pele|rosto)\b/.test(q0) ? q0.replace(/\b(depois|apos|antes|no|durante) (do|o) banho\b/g, " ") : q0;
 
   const matched = new Set<GoalId>();
   for (const g of GOALS) {
@@ -125,7 +131,7 @@ export function parseIntent(req: SearchRequest): ParsedIntent {
   if (!skinType && primaryGoal === "oleosidade") skinType = "oleosa";
 
   const preferences = new Set<string>(req.preferences ?? []);
-  for (const [re, claim] of PREFERENCE_PATTERNS) if (re.test(q)) preferences.add(claim);
+  for (const [re, claim] of PREFERENCE_PATTERNS) if (re.test(full)) preferences.add(claim);   // #49: a frase inteira (o "tira ..." sai de q)
 
   const requestedIngredients = INGREDIENT_MENTIONS.filter(([re]) => re.test(q)).map(([, id]) => id);
   const pregnancy = /\b(gravida|gestante|gravidez|gestacao|amamentando|amamentacao|lactante)\b/.test(q);

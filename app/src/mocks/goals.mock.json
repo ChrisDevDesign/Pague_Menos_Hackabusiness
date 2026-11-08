@@ -69,7 +69,13 @@
    "cuidar da pele",
    "cuidado com a pele",
    "rotina",
-   "começar a cuidar"
+   "começar a cuidar",
+   "kit masculino",
+   "skin care masculino",
+   "cuidados masculinos",
+   "pele masculina",
+   "pra homem",
+   "para homem"
   ]
  },
  {
@@ -197,7 +203,7 @@
  },
  {
   "id": "higiene_premium",
-  "label": "Higiene premium",
+  "label": "Higiene do dia a dia",
   "concerns": [
    "higiene_diaria",
    "cuidado_cabelo",
@@ -224,7 +230,11 @@
    "pasta de dente",
    "desodorante",
    "cabelo",
-   "produtos de higiene"
+   "produtos de higiene",
+   "higiene do dia a dia",
+   "kit de higiene",
+   "kit de viagem",
+   "higiene pra viagem"
   ]
  },
  {

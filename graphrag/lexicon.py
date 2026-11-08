@@ -85,8 +85,10 @@ CONCERN_ALIASES: dict[str, list[str]] = {
                     "soltinho", "barriga solta", "caganeira", "disenteria", "desarranjo intestinal", "toda hora no banheiro", "correndo pro banheiro"],
     "prisao_de_ventre": ["prisao de ventre", "intestino preso", "constipacao", "constipada", "constipado"],
     "enjoo": ["enjoo", "enjoado", "enjoada", "nausea", "nauseas", "vomito", "vomitando", "ansia de vomito"],
-    "hipertensao": ["pressao alta", "hipertensao", "remedio de pressao", "remedio para pressao"],
-    "colesterol": ["colesterol", "colesterol alto", "remedio de colesterol"],
+    "hipertensao": ["pressao alta", "hipertensao", "remedio de pressao", "remedio para pressao", "remedio pra pressao",
+                    "remedio da pressao", "remedio pra pressao alta", "remedio para pressao alta", "medicamento para pressao",
+                    "medicamento pra pressao", "anti hipertensivo", "antihipertensivo", "controlar a pressao", "baixar a pressao"],   # #54
+    "colesterol": ["colesterol", "colesterol alto", "remedio de colesterol", "remedio pra colesterol", "remedio para colesterol"],
 }
 
 # Fala popular/chula de alta frequência (graphrag/slang.py): atalho determinístico, não a solução geral.

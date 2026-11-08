@@ -41,3 +41,16 @@ def assess(text: str, pregnancy: bool, primary_goal: str | None, refill_flow: bo
         return {"decision": "caution", "category": "gestacao_e_ativos",
                 "message": "Você mencionou gestação ou amamentação. Retiramos dos kits os produtos com restrição nesse período."}
     return {"decision": "allow"}
+
+# #52 (auditoria 08/11): febre alta ou persistente (3 dias ou mais) não é emergência, mas precisa de avaliação.
+# A lista de antitérmicos continua; a resposta começa por essa orientação. Espelho em app/src/services/urgency.ts.
+ATTENTION_MESSAGE = ("Febre alta, que não baixa ou que dura 3 dias ou mais precisa ser avaliada: procure uma unidade de saúde ou um pronto-atendimento. Abaixo, os antitérmicos sem receita, para usar só como indicado na bula.")
+_ATTENTION = re.compile(r"\bfebre\b[^.!?]{0,30}\b(ha|por|faz|tem|desde|durante|ja sao|ja faz)\b[^.!?]{0,12}\b([3-9]|1[0-9]|tres|quatro|cinco|seis|sete|varios|muitos|mais de (2|3|dois|tres)) dias\b|\bfebre\b[^.!?]{0,30}\b(uma|1|mais de uma) semana\b|\bfebre (que )?nao (passa|baixa|cede|para|vai embora|abaixa)\b|\b([3-9]|tres|quatro|cinco|seis|sete) dias (de|com) febre\b|\bfebre (de |acima de |de quase )?39\b|\b39 (graus )?de febre\b")
+
+
+def attention(text: str) -> dict | None:
+    """Sinal que pede avaliação, sem ser emergência: a resposta segue com produtos, com o aviso na frente."""
+    if _ATTENTION.search(norm(text)):
+        return {"decision": "caution", "category": "procure_atendimento", "message": ATTENTION_MESSAGE}
+    return None
+

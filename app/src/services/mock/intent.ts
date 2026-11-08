@@ -3,6 +3,7 @@
 import type { GoalId, Intent, Safety, SearchRequest, SkinType } from "../../contracts/types";
 import { DERMO_GOALS } from "../../contracts/types";
 import { GOALS } from "./catalogData";
+import { parseExclusions } from "./exclusions";
 
 export function norm(s: string): string {
   return s
@@ -90,7 +91,10 @@ export interface ParsedIntent {
 }
 
 export function parseIntent(req: SearchRequest): ParsedIntent {
-  const q = norm(req.query);
+  const full = norm(req.query);
+  // #24/#25: "sem X" sai da frase antes de procurar objetivo, pele e etapa ("sem gel de limpeza" não é pedido de limpeza)
+  const excl = parseExclusions(full);
+  const q = excl.stripped || full;
 
   const matched = new Set<GoalId>();
   for (const g of GOALS) {
@@ -144,10 +148,11 @@ export function parseIntent(req: SearchRequest): ParsedIntent {
       pregnancy,
       storeId: req.storeId ?? null,
       missing,
+      ...(excl.labels.length ? { exclude: excl.labels } : {}),
     },
     requestedIngredients,
-    understood,
-    normalized: q,
+    understood: understood || (excl.labels.length > 0 && understood),
+    normalized: full,
   };
 }
 

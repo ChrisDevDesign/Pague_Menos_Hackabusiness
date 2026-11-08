@@ -61,6 +61,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, {"ok": True, "products": len(e.cat.products), "graph": e.graph.stats()["totalNodes"],
                              "vocab": len(e.wv.vocab), "weights": {k: e.weights[k] for k in ("bm25", "emb", "graph")},
                              "rag": e.rag is not None, "ragCalls": dict(e.stats),
+                             "llm": e.rag.client.status() if e.rag is not None and hasattr(e.rag.client, "status") else None,
+                             "writer": e.writer.status() if e.writer is not None else None,
                              "quota": e.quota.snapshot(self._client_id())})   # #60/#64: sem chave ou no teto, a busca piora em silêncio
         else:
             self._send(404, {"error": "rota inexistente"})

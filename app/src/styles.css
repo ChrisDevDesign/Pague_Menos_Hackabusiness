@@ -885,3 +885,10 @@ button:hover > .btn-sm.as-span { background: var(--brand); color: #fff; }
 .auto-opt.on { border-color: var(--brand); background: var(--brand-tint); box-shadow: 0 0 0 1px var(--brand); }
 .auto-note { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; color: var(--text-2); line-height: 1.45; background: #f6f7fb; border-radius: 10px; padding: 10px 12px; }
 .auto-note svg { flex: none; margin-top: 2px; color: var(--brand); }
+
+/* #24/#25: o que a pessoa tirou aparece como chip */
+.chip.excl { background: #fdecea; border-color: #e9b4b0; color: #7a1a12; font-weight: 600; }
+
+/* #27: um cartão por produto; a outra marca vira atalho */
+.pcard-alt { align-self: flex-start; display: inline-flex; align-items: center; gap: 3px; font-size: 11.5px; font-weight: 700; color: var(--brand); background: var(--brand-tint); border-radius: 999px; padding: 3px 8px; }
+.pcard-alt:hover { background: var(--brand); color: #fff; }

@@ -1,3 +1,4 @@
+import { exclusionsFromLabels, isExcluded, type Exclusions } from "./exclusions";
 // MOCK do compositor de kits. Implementa as regras K1 a K12 do doc 06 de forma simples,
 // só para demonstrar as telas. No sistema real isto é o módulo graphrag/composer.
 import type {
@@ -40,6 +41,8 @@ export interface Ctx {
   budgetCents: number | null;
   requestedIngredients: string[];
   storeId: string | null;
+  /** #24/#25: o que a pessoa pediu para tirar. */
+  excl: Exclusions;
 }
 
 /** K13 (#40, regra da Anvisa): remédio nunca entra em kit nem na troca de item; continua nas listas. Igual ao motor. */
@@ -72,6 +75,7 @@ export function buildCtx(intent: Intent, requestedIngredients: string[]): Ctx | 
     budgetCents: intent.budgetCents,
     requestedIngredients,
     storeId: intent.storeId ?? null,
+    excl: exclusionsFromLabels(intent.exclude),
   };
 }
 
@@ -80,6 +84,7 @@ export function buildCtx(intent: Intent, requestedIngredients: string[]): Ctx | 
 // ---------------------------------------------------------------------------
 export function baseEligible(p: Product, ctx: Ctx, relaxSkin = false): boolean {
   if (stockAt(p.id, ctx.storeId) <= 0) return false;
+  if (isExcluded(p, ctx.excl)) return false;
   if (ctx.pregnancy && p.warnings.includes("consultar_se_gestante")) return false;
   if (!ctx.prefs.every((pref) => p.claims.includes(pref))) return false;
   if (!relaxSkin) {
@@ -491,7 +496,8 @@ export function compose(ctx: Ctx, requestId: string): Composition {
   const full = new Map<StepId, Product[]>();
   const short = new Map<StepId, Product[]>();
   const relaxed: StepId[] = [];
-  const stepsWanted = [...goal.requiredSteps, ...goal.optionalSteps];
+  // #24: etapa que a pessoa tirou ("sem limpeza") sai do kit
+  const stepsWanted = [...goal.requiredSteps, ...goal.optionalSteps].filter((s) => !ctx.excl.steps.includes(s));
   for (const step of stepsWanted) {
     const { list, relaxed: r } = candidatesFor(step, ctx);
     if (list.length === 0) continue;
@@ -500,8 +506,8 @@ export function compose(ctx: Ctx, requestId: string): Composition {
     short.set(step, shortlist(list, ctx));
   }
 
-  const required = goal.requiredSteps;
-  if (required.some((s) => !short.has(s))) {
+  const required = goal.requiredSteps.filter((s) => !ctx.excl.steps.includes(s));
+  if (!required.length || required.some((s) => !short.has(s))) {
     return {
       status: "not_applicable",
       kits: [],

@@ -27,7 +27,10 @@ from .text import norm
 log = logging.getLogger("graphrag.rag")
 
 API_URL = "https://api.deepseek.com/chat/completions"
-MODEL = "deepseek-chat"
+# #29 (auditoria 08/11): "deepseek-chat" saiu da tabela de preços da DeepSeek; o modelo atual é "deepseek-flash"
+# (DeepSeek-V4.1-Flash). Dá para trocar sem mexer no código com a variável de ambiente DEEPSEEK_MODEL.
+DEFAULT_MODEL = "deepseek-flash"
+MODEL = os.environ.get("DEEPSEEK_MODEL", "").strip() or DEFAULT_MODEL
 TIMEOUT_S = 4.0                 # por operação de rede; uma só chamada por busca (o replay do chat não chama)
 MAX_TEXT = 500                  # mesmo limite de /v1/search-chat: frase maior é cortada antes de enviar
 MAX_PER_MIN = 60                # ponytail: teto por processo; com tráfego real, limite por pessoa/IP
@@ -115,6 +118,7 @@ class DeepSeek:
     def __init__(self, key: str, timeout: float = TIMEOUT_S, url: str = API_URL, model: str = MODEL):
         self.key, self.timeout, self.url, self.model = key, timeout, url, model
         self.calls, self.lock, self.recent = 0, threading.Lock(), []
+        self.failures, self.last_error = 0, None     # #29: falha não fica mais silenciosa; aparece no /v1/health
 
     @classmethod
     def from_env(cls) -> "DeepSeek | None":
@@ -139,8 +143,16 @@ class DeepSeek:
             with urllib.request.urlopen(req, timeout=self.timeout) as r:
                 return json.loads(r.read())["choices"][0]["message"]["content"]
         except Exception as e:                       # rede, HTTP 4xx/5xx, tempo, resposta fora do formato
-            log.warning("deepseek indisponível: %s", type(e).__name__)
+            with self.lock:
+                self.failures += 1
+                self.last_error = f"{type(e).__name__}: {getattr(e, 'code', '') or ''}".strip(": ")
+            log.warning("deepseek indisponível (%s, modelo %s): %s", self.last_error, self.model, type(e).__name__)
             return None
+
+    def status(self) -> dict:
+        """#29: modelo em uso, chamadas e falhas, para o /v1/health."""
+        with self.lock:
+            return {"model": self.model, "calls": self.calls, "failures": self.failures, "lastError": self.last_error}
 
 
 class Reader:

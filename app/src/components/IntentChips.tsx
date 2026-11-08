@@ -28,6 +28,9 @@ export function IntentChips({ intent, onEditSkin, onEditBudget, askSkin, oneLine
           {p}
         </span>
       ))}
+      {(intent.exclude ?? []).map((x) => (
+        <span key={`sem-${x}`} className="chip excl"><Icon name="close" size={13} /> sem {x}</span>
+      ))}
       {intent.goals.some((g) => DERMO_GOALS.includes(g)) ? (
         <button className={`chip ${intent.skinType ? "" : askSkin ? "ask" : "missing"}`} onClick={onEditSkin}
           title={!intent.skinType && askSkin ? "Opcional: os kits já valem para qualquer tipo de pele" : undefined}>

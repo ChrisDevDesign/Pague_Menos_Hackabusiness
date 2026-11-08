@@ -1,3 +1,4 @@
+import { collapseOwnBrand } from "../services/collapse";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { HScroll } from "../components/HScroll";
 import { ResultsBar } from "../components/Bars";
@@ -145,7 +146,7 @@ function ResultBody({ res, storeName, onPatch, onRefine, onOpen, onStores }: {
         </div>
       )}
       {res.products.length ? (
-        <ProductList products={res.products} title={hasKits ? `${listTitle} (${res.products.length})` : undefined} />
+        <ProductList products={res.products} title={hasKits ? `${listTitle} (${collapseOwnBrand(res.products).length})` : undefined} />
       ) : empty && !res.catalogNotice && !lead && !urgent ? (
         <p className="count">Não encontrei itens para esse pedido. Tente outras palavras ou escolha uma das sugestões abaixo.</p>
       ) : null}
@@ -279,8 +280,8 @@ export function ProductList({ products, emptyText, title }: { products: Product[
       {/* #21: com título (que já traz o total), a contagem só aparece quando um filtro muda o número */}
       {!title || shown.length !== products.length ? <p className="count">{shown.length} {shown.length === 1 ? "produto encontrado" : "produtos encontrados"}</p> : <div style={{ height: 10 }} />}
       <div className="grid2 listpad">
-        {shown.map((p) => (
-          <ProductCard key={p.id} product={p} />
+        {collapseOwnBrand(shown).map(({ product: p, alt }) => (
+          <ProductCard key={p.id} product={p} alt={alt} />
         ))}
       </div>
       {open ? (

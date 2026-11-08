@@ -1,3 +1,4 @@
+import { collapseOwnBrand } from "../services/collapse";
 // Conversa na barra de busca: a pessoa escreve do jeito dela e o motor responde com texto, kits, produtos e ações.
 // O app só envia a frase, o `context` da resposta anterior e ids. Dados de saúde da pessoa nunca saem daqui.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
@@ -191,10 +192,10 @@ function BotBody({ res, onSend, storeName, push }: { res: SearchResponse; isLast
       {res.notes.filter((n) => n !== res.reply).map((n) => <div key={n} className="note"><Icon name="info" size={18} /><p>{n}</p></div>)}
 
       {a?.type === "show_products" && res.products.length ? (
-        <HScroll className="hscroll chat-products">{res.products.slice(0, 8).map((p) => <ProductCard key={p.id} product={p} />)}</HScroll>
+        <HScroll className="hscroll chat-products">{collapseOwnBrand(res.products).slice(0, 8).map(({ product: p, alt }) => <ProductCard key={p.id} product={p} alt={alt} />)}</HScroll>
       ) : null}
       {res.kitsStatus === "not_applicable" && !a?.type?.match(/show_products|show_similars|open_refill|delivery/) && res.products.length ? (
-        <HScroll className="hscroll chat-products">{res.products.slice(0, 8).map((p) => <ProductCard key={p.id} product={p} />)}</HScroll>
+        <HScroll className="hscroll chat-products">{collapseOwnBrand(res.products).slice(0, 8).map(({ product: p, alt }) => <ProductCard key={p.id} product={p} alt={alt} />)}</HScroll>
       ) : null}
 
       {a?.type === "open_refill" ? (

@@ -16,6 +16,8 @@ import threading
 
 from . import embed
 from .composer import Composer, build_ctx, list_pt, lower_name
+from .exclusions import excluded as _is_excluded
+from .writer import Writer, facts_of
 from .concepts import MED_MISSING, MED_SHELF
 from .data import Catalog, load_catalog
 from .lexicon import STATE_WORDS, canon_state
@@ -71,9 +73,14 @@ ADJUST_CUE = re.compile(r"\b(tir\w*|sem|troc\w*|remov\w*|mud\w*|menos|nada de)\b
 
 
 class Engine:
-    def __init__(self, cat: Catalog, graph: KnowledgeGraph, wv, clf: ActClassifier, weights: dict | None = None, llm=None):
+    def __init__(self, cat: Catalog, graph: KnowledgeGraph, wv, clf: ActClassifier, weights: dict | None = None, llm=None,
+                 writer: bool | None = None):
         self.cat, self.graph, self.wv, self.clf = cat, graph, wv, clf
         self.rag = Reader(cat, llm) if llm else None        # DeepSeek só quando o grafo não entende (#34)
+        # #26: redator dos kits, com checagem e texto fixo de reserva. Desligado por padrão (é uma 2ª chamada por busca,
+        # ver o custo no item #28); liga com RAG_WRITER=on no ambiente ou writer=True.
+        on = writer if writer is not None else os.environ.get("RAG_WRITER", "off").strip().lower() == "on"
+        self.writer = Writer(llm) if llm and on else None
         # #42: o que vale quando o pedido não traz allowExternal (cliente antigo). Em produção: RAG_EXTERNAL_DEFAULT=off
         self.quota = Quota.from_env()
         self.external_default = os.environ.get("RAG_EXTERNAL_DEFAULT", "on").strip().lower() != "off"
@@ -142,6 +149,8 @@ class Engine:
             intent["skinType"] = req["skinType"]
         if req.get("preferences"):
             intent["preferences"] = sorted(set(intent["preferences"]) | set(req["preferences"]))
+        if u.excluded_labels:
+            intent["exclude"] = sorted(set(u.excluded_labels) | set((prev or {}).get("exclude", [])))
         intent["missing"] = self._missing(intent)
         return intent
 
@@ -175,9 +184,35 @@ class Engine:
                     return k
         return kits[0]
 
+    def _with_removed(self, reply: str, intent: dict, ctx_out: dict | None, act: str) -> str:
+        """#24/#25: a resposta diz o que saiu ("Sem dipirona."), em vez de parecer que ignorou o pedido."""
+        if act not in ("busca", "refinar") or not reply:
+            return reply
+        names = list((intent or {}).get("exclude") or [])
+        for i in (ctx_out or {}).get("excluded", []) or []:
+            if i in self.cat.ingredients:
+                names.append(lower_name(self.cat.ingredients[i]["name"]))
+        names = list(dict.fromkeys(names))
+        if not names or reply.startswith("Sem "):
+            return reply
+        return f"Sem {list_pt(names)}. {reply}"
+
+    def _drop_removed(self, products, intent: dict, ctx_out: dict | None):
+        """#24/#25: o que a pessoa tirou também sai da lista de produtos (não só dos kits)."""
+        if not products:
+            return products
+        labels = (intent or {}).get("exclude") or []
+        ings = set((ctx_out or {}).get("excluded", []) or [])
+        if not labels and not ings:
+            return products
+        ex = self.nlu.exclusions.from_labels(labels) if labels else None
+        return [p for p in products if not _is_excluded(p, ex) and not (ings & set(p.get("ingredients", [])))]
+
     def _out(self, req, query, safety, intent, act, reply, *, kits_status="not_applicable", kits=None, closest=None,
              products=None, notes=None, suggestions=None, action=None, ctx_out=None, clarification=None,
              catalog_notice=None, scope_info=None) -> dict:
+        reply = self._with_removed(reply, intent, ctx_out, act)
+        products = self._drop_removed(products, intent, ctx_out)
         res = {"requestId": self._rid(req), "query": query, "safety": safety, "intent": intent, "act": act,
                "kitsStatus": kits_status, "kits": kits or [], "closestKit": closest, "products": products or [],
                "notes": notes or [], "reply": reply, "suggestions": (suggestions or [])[:5],
@@ -208,6 +243,12 @@ class Engine:
         orig_query = req.get("query", "")
         query, fixes = self.speller.fix(orig_query)
         clean = FIGURATIVE.sub(" ", query)          # "me caguei de medo" não pode virar diarreia nem na recuperação
+        # #24: "sem gel de limpeza" sai da frase já na entrada (recuperação, prateleira e objetivo usam a frase limpa);
+        # os rótulos seguem no pedido e voltam no intent
+        ex = self.nlu.exclusions.read(clean)
+        if ex:
+            clean = ex.stripped
+            req = {**req, "_exclude": list(ex.labels)}
         res = self._search(req, clean, orig_query)
         miss = res.pop("_miss", None)
         # #42: só vai à DeepSeek com allowExternal exatamente true (ou ausente, se o padrão for ligado); 0, "false" e null desligam
@@ -238,9 +279,25 @@ class Engine:
             turn = max(0, int(((res.get("context") or {}).get("turn") or 1)) - 1)
             carry = {**(res.get("intent") or {}), "goals": [], "primaryGoal": None}
             res = self._med_missing(req, orig_query, res["safety"], carry, turn)
+        if usable and self.writer:
+            res = self._write(res)
         res["query"] = orig_query
         if fixes and clean == query and canon_state(norm(orig_query)) == norm(orig_query):      # texto reescrito pela regra do corpo não é "correção"
             res["correctedQuery"] = query
+        return res
+
+    def _write(self, res: dict) -> dict:
+        """#26: só com kit montado, sem alerta de segurança e nunca para remédio (kit nunca tem remédio, K13)."""
+        intent = res.get("intent") or {}
+        goal = intent.get("primaryGoal")
+        if (not res.get("kits") or res.get("act") not in ("busca", "refinar") or goal not in self.cat.goal_by_id
+                or (res.get("safety") or {}).get("decision", "allow") != "allow"):
+            return res
+        facts = facts_of(res, self.cat.goal_by_id[goal]["label"].lower(), self.store_names.get(intent.get("storeId")))
+        text = self.writer.rewrite(facts)
+        self._count("redator" if text else "redator_recusado")
+        if text:
+            res = {**res, "reply": text, "replySource": "redator"}
         return res
 
     def _count(self, key: str) -> None:
@@ -380,6 +437,8 @@ class Engine:
         has_ctx = bool(prev_intent and (cin.get("kits") or prev_intent.get("primaryGoal") or cin.get("scope")))
         turn = int(cin.get("turn", 0))
         u = self.nlu.understand(query, has_context=has_ctx)
+        if req.get("_exclude"):
+            u.excluded_labels = list(dict.fromkeys(list(u.excluded_labels) + list(req["_exclude"])))
         act = u.act
         # termo solto na barra ("ômega 3", "sabonete", "sérum"): sem conversa anterior e sem pista de que aponta para algo
         # já mostrado (troque, esse, ?...), não há o que trocar nem sobre o que perguntar: é uma busca nova.
@@ -634,7 +693,7 @@ class Engine:
         meds = any(_health(p) for p in prods)
         if meds and re.search(r"\bkits?\b", norm(query)):
             reply = "Remédios não entram em kit, então mostro os itens avulsos. " + reply   # #40, sem mandar procurar ninguém
-        reply += " Toque numa sugestão para ajustar a lista." if meds else " Toque numa sugestão para montar um kit ou ajustar a lista."
+        reply += " Os sem receita aparecem primeiro; toque numa sugestão para ajustar." if meds else " Se quiser, toque numa sugestão para montar um kit ou ajustar a lista."
         res = self._out(req, query, safety, intent, "busca", reply, products=prods,
                         suggestions=self._dept_suggestions(scope, intent), action={"type": "show_products"},
                         catalog_notice=notice, scope_info=self._scope_info(scope, n),
@@ -718,6 +777,8 @@ class Engine:
             intent["skinType"] = u.skin
         if u.pregnancy:
             intent["pregnancy"] = True
+        if u.excluded_labels:
+            intent["exclude"] = sorted(set(intent.get("exclude", [])) | set(u.excluded_labels))
         excluded = sorted(set(cin.get("excluded", [])) | set(u.excluded_ingredients))
         requested = sorted((set(cin.get("requested", [])) | set(u.requested_ingredients)) - set(excluded))
         ctx0 = build_ctx(self.cat, intent, requested, excluded)
@@ -738,7 +799,7 @@ class Engine:
             intent["storeId"] = req["storeId"]
         intent["missing"] = self._missing(intent)
         heard = (u.tier or u.skin or u.goals or u.preferences or u.budget_mentioned or u.cheaper or u.richer
-                 or u.excluded_ingredients or u.requested_ingredients or u.pregnancy)
+                 or u.excluded_ingredients or u.excluded_labels or u.requested_ingredients or u.pregnancy)
         noop = (not heard and excluded == sorted(cin.get("excluded", [])) and requested == sorted(cin.get("requested", []))
                 and all(_same(intent.get(k), carry.get(k)) for k in GRAPH_KEYS))   # nada mudou e nada foi reconhecido
         if not intent.get("primaryGoal") and cin.get("scope"):
@@ -1051,7 +1112,6 @@ class Engine:
         if only:
             kits = [k for k in kits if k["tier"] == only] or kits
         parts = [f"{TIER_NAME[k['tier']]} {money(k['totalCents'])}" for k in kits]
-        head = "Ajustei" if refined else "Montei"
         extra = ""
         if refined and excluded:
             names = [lower_name(self.cat.ingredients[i]["name"]) for i in excluded if i in self.cat.ingredients]
@@ -1061,8 +1121,19 @@ class Engine:
         if ctx.pregnancy:
             extra += " Retirei o que tem restrição na gestação."
         n = len(kits)
-        return (f"{head} {n} opç{'ão' if n == 1 else 'ões'} de {goal}{budget}{store}: {list_pt(parts)}.{extra} "
-                "Quer trocar algum item, ajustar o preço ou ver o total com entrega?")
+        # #26: frase mais tranquila, com variação estável (mesma busca, mesmo texto)
+        lo, hi = min(k["totalCents"] for k in kits), max(k["totalCents"] for k in kits)
+        what = f"{n} opç{'ão' if n == 1 else 'ões'} de {goal}{budget}{store}"
+        if refined:
+            lead = f"Pronto, ajustei. Ficaram {what}: {list_pt(parts)}."
+        elif n == 1:
+            lead = f"Encontrei uma opção de {goal}{budget}{store}: {list_pt(parts)}."
+        else:
+            v = sum(map(ord, goal)) % 3
+            lead = [f"Separei {what}. A mais em conta sai por {money(lo)} e a mais completa, por {money(hi)}.",
+                    f"Aqui estão {what}: {list_pt(parts)}.",
+                    f"Montei {what}, de {money(lo)} a {money(hi)}."][v]
+        return f"{lead}{extra} Quer que eu troque algum item ou mostre o total com entrega?"
 
     def _suggest_after(self, comp, intent) -> list[str]:
         sug = []

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { BasketButton } from "../components/Bars";
 import { BottomSheet } from "../components/BottomSheet";
 import { Icon } from "../components/Icon";
+import { OwnBrandTag } from "../components/OwnBrandTag";
 import { ProductImage } from "../components/ProductImage";
 import type { Intent, Kit, StepId, SwapOption } from "../contracts/types";
 import { STEP_LABEL, TIER_LABEL, kitPrice } from "../contracts/types";
@@ -113,6 +114,7 @@ export function KitDetail({ initialKit, intent }: { initialKit: Kit; intent: Int
                 <span className="grow" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                   <span className="brandname" style={{ fontSize: 12 }}>{it.product.brand}</span>
                   <span style={{ fontSize: 14.5 }}>{it.product.name}</span>
+                  {it.product.ownBrand ? <OwnBrandTag small /> : null}
                   <span className="price blue" style={{ fontSize: 16 }}>{money(it.product.priceCents)}</span>
                 </span>
               </button>
@@ -142,7 +144,7 @@ export function KitDetail({ initialKit, intent }: { initialKit: Kit; intent: Int
 
       <div className="sticky">
         <div className="line1">
-          <span>{kit.items.length} {kit.items.length === 1 ? "item" : "itens"}{kit.discountCents > 0 ? <small className="kit-off"> · avulsos {money(kit.itemsTotalCents)} · desconto do kit {kit.discountPct}% (−{money(kit.discountCents)})</small> : null}</span>
+          <span>{kit.items.length} {kit.items.length === 1 ? "item" : "itens"}{kit.discountCents > 0 ? <small className="kit-off">Avulsos {money(kit.itemsTotalCents)} · desconto do kit {kit.discountPct}% (−{money(kit.discountCents)})</small> : null}</span>
           <b>{money(kit.totalCents)}</b>
         </div>
         <button className="btn primary block" onClick={() => dispatch({ type: "addKit", kit, intent, everyDays: every })}>

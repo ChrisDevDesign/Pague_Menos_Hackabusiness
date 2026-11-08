@@ -2,6 +2,7 @@ import type { Kit } from "../contracts/types";
 import { STEP_LABEL, TIER_LABEL } from "../contracts/types";
 import { money } from "../services/format";
 import { Icon } from "./Icon";
+import { OwnBrandTag } from "./OwnBrandTag";
 import { ProductImage } from "./ProductImage";
 
 export function KitCard({ kit, onOpen, overBudgetBy }: { kit: Kit; onOpen: () => void; overBudgetBy?: number }) {
@@ -26,6 +27,7 @@ export function KitCard({ kit, onOpen, overBudgetBy }: { kit: Kit; onOpen: () =>
         ))}
       </ul>
       <div className="chips" style={{ gap: 6 }}>
+        {kit.items.every((i) => i.product.ownBrand) ? <OwnBrandTag small /> : null}
         {kit.cashbackCents > 0 ? <span className="mini green">{money(kit.cashbackCents)} de cashback</span> : null}
         {attention > 0 ? (
           <span className="mini warn">

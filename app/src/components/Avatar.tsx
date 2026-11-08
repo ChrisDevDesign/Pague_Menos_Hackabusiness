@@ -1,6 +1,19 @@
+import { useState } from "react";
+import { PROFILE_PHOTO, photoUrl } from "../photos";
+
+/** #18: foto de perfil real (Unsplash) da persona fictícia; se a foto não carregar, volta o desenho. */
+export function PersonaAvatar({ size = 48, ring = false }: { size?: number; ring?: boolean }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <DrawnAvatar size={size} ring={ring} />;
+  return (
+    <img className={`avatar-photo${ring ? " ring" : ""}`} src={photoUrl(PROFILE_PHOTO, size * 2, size * 2, "&crop=faces")} width={size} height={size}
+      alt="Foto de perfil de Renata (persona fictícia)" onError={() => setFailed(true)} />
+  );
+}
+
 /** Retrato ilustrado da persona (desenho original, vetorial). Renata, 49 anos: cabelo castanho curto com fios grisalhos,
  *  blusa azul da marca. Usado na tela inicial, em Mais e na conversa. */
-export function PersonaAvatar({ size = 48, ring = false }: { size?: number; ring?: boolean }) {
+function DrawnAvatar({ size = 48, ring = false }: { size?: number; ring?: boolean }) {
   return (
     <svg width={size} height={size} viewBox="0 0 96 96" role="img" aria-label="Foto de perfil de Renata (ilustração)"
       style={{ borderRadius: "50%", flex: "none", boxShadow: ring ? "0 0 0 3px #fff" : undefined }}>

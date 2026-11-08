@@ -18,7 +18,8 @@ import { Delivery } from "./screens/Delivery";
 import { Favorites } from "./screens/Favorites";
 import { Home } from "./screens/Home";
 import { KitDetail } from "./screens/KitDetail";
-import { Credits, More, Orders, Stores, Subscriptions, Wallet } from "./screens/More";
+import { Credits, More, Orders, Stores, Wallet } from "./screens/More";
+import { SubscriptionEdit, Subscriptions } from "./screens/Subscriptions";
 import { Offers } from "./screens/Offers";
 import { Confirmation, Payment } from "./screens/Payment";
 import { ProductPage } from "./screens/ProductPage";
@@ -82,7 +83,7 @@ function Screen() {
   const { view } = useNav();
   switch (view.name) {
     case "home": return <Home />;
-    case "searchFocus": return <SearchFocus initial={view.initial} />;
+    case "searchFocus": return <SearchFocus initial={view.initial} voice={view.voice} />;
     case "results": return <Results req={view.req} />;
     case "chat": return <Chat initial={view.initial} />;
     case "refill": return <Refill />;
@@ -101,6 +102,7 @@ function Screen() {
     case "mais": return <More />;
     case "orders": return <Orders />;
     case "subscriptions": return <Subscriptions />;
+    case "subscription": return <SubscriptionEdit id={view.id} />;
     case "wallet": return <Wallet />;
     case "credits": return <Credits />;
     case "stores": return <Stores />;

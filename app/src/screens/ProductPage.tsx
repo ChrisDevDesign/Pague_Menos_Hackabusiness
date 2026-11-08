@@ -1,4 +1,5 @@
 import { BasketButton } from "../components/Bars";
+import { OwnBrandTag } from "../components/OwnBrandTag";
 import { Icon } from "../components/Icon";
 import { discountPct } from "../components/ProductCard";
 import { ProductImage } from "../components/ProductImage";
@@ -48,6 +49,7 @@ export function ProductPage({ id }: { id: string }) {
             </div>
             <div className="pdp-info">
               <span className="brandname">{p.brand}</span>
+              {p.ownBrand ? <OwnBrandTag /> : null}
               <h1>{p.name}</h1>
               <span className="code">cód.: {p.id.toUpperCase()} · {p.size.value} {p.size.unit}{p.fps ? ` · FPS ${p.fps}` : ""}</span>
               {med ? (

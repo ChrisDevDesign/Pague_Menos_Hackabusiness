@@ -1,4 +1,5 @@
 import { TitleBar } from "../components/Bars";
+import { HScroll } from "../components/HScroll";
 import { Icon } from "../components/Icon";
 import { ProductCard, discountPct } from "../components/ProductCard";
 import { ProductImage } from "../components/ProductImage";
@@ -59,9 +60,9 @@ export function Cart() {
             {info.data?.top.length ? (
               <section aria-label="Top de vendas">
                 <div className="sec-head"><h2>Top de vendas!</h2></div>
-                <div className="hscroll" style={{ marginTop: 12 }}>
+                <HScroll className="hscroll" style={{ marginTop: 12 }}>
                   {info.data.top.map((p) => <ProductCard key={p.id} product={p} />)}
-                </div>
+                </HScroll>
               </section>
             ) : null}
           </div>

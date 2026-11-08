@@ -66,11 +66,12 @@ describe("casos de teste do doc 08", () => {
   });
 
   it("T6: nada dentro do orçamento (mesmo com o desconto do kit) mostra o kit mais próximo", async () => {
-    const r = await run("Acne, pele oleosa, até R$ 35");
+    // #13 (07/11): com a marca própria Pague Menos, mais barata, um kit de acne já cabe em R$ 35; o cenário usa R$ 20
+    const r = await run("Acne, pele oleosa, até R$ 20");
     expect(r.kitsStatus).toBe("none_in_budget");
     expect(r.kits).toHaveLength(0);
     expect(r.closestKit).toBeTruthy();
-    expect(r.closestKit!.totalCents).toBeGreaterThan(3500);
+    expect(r.closestKit!.totalCents).toBeGreaterThan(2000);
     expect(r.closestKit!.withinBudget).toBe(false);
     expect(r.products.length).toBeGreaterThan(0);
   });
@@ -423,9 +424,9 @@ describe("faixas dos kits (#31)", () => {
 
 describe("dose lida do nome (#31)", () => {
   it("lê a mesma dose que o motor (mesmos casos de graphrag/tests/test_engine.py)", () => {
-    expect(dose("Dipirona 1 g (genérico) — 10 comprimidos")).toEqual([1000, "mg"]);
-    expect(dose("Dipirona 500 mg — 36 comprimidos")).toEqual([500, "mg"]);
+    expect(dose("Dipirona 1 g (genérico), 10 comprimidos")).toEqual([1000, "mg"]);
+    expect(dose("Dipirona 500 mg, 36 comprimidos")).toEqual([500, "mg"]);
     expect(dose("Sérum Vitamina C 20%")).toEqual([20, "%"]);
-    expect(dose("Pastilha Mel e Limão — 12 un")).toBeNull();
+    expect(dose("Pastilha Mel e Limão, 12 un")).toBeNull();
   });
 });

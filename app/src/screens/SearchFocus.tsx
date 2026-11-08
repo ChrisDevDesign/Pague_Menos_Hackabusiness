@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Icon } from "../components/Icon";
 import { SEARCH_HINT } from "../components/SearchHint";
+import { MicButton, VoicePanel, useVoice } from "../components/Voice";
 import { useNav } from "../nav";
 import { useApp } from "../state/app";
 
@@ -14,7 +15,7 @@ const EXAMPLES = [
   "protetor solar e manchas, sem perfume",
 ];
 
-export function SearchFocus({ initial = "" }: { initial?: string }) {
+export function SearchFocus({ initial = "", voice: startVoice = false }: { initial?: string; voice?: boolean }) {
   const { pop, replace, view } = useNav();
   const { recents, dispatch, storeId } = useApp();
   const [q, setQ] = useState(initial);
@@ -29,6 +30,12 @@ export function SearchFocus({ initial = "" }: { initial?: string }) {
     e.preventDefault();
     go(q);
   };
+  // #10: a fala vira o texto da busca e a busca sai sozinha
+  const voice = useVoice((t) => { setQ(t); go(t); });
+  const auto = useRef(false);
+  useEffect(() => {
+    if (startVoice && !auto.current) { auto.current = true; voice.start(); }
+  }, [startVoice, voice]);
 
   return (
     <div className="screen" style={{ background: "#fff" }} key={view.name}>
@@ -42,14 +49,17 @@ export function SearchFocus({ initial = "" }: { initial?: string }) {
               <Icon name="close" size={18} />
             </button>
           ) : null}
+          <MicButton voice={voice} className="in-field" label="Buscar por áudio" />
         </div>
         <button type="button" className="link plain" style={{ padding: "0 8px", minHeight: 44 }} onClick={pop}>Cancelar</button>
       </form>
+      <VoicePanel voice={voice} hint="Fale o que você precisa, por exemplo: remédio para dor de cabeça" />
       <div className="scroll">
         <div className="pad">
           <div className="shortcuts" style={{ gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-            <button className="shortcut" style={{ minHeight: 84, alignItems: "center", textAlign: "center", border: 0 }} disabled title="Fora do protótipo">
-              <Icon name="mic" /> <b style={{ fontSize: 13 }}>Buscar por áudio</b>
+            <button type="button" className={`shortcut${voice.listening ? " on" : ""}`} style={{ minHeight: 84, alignItems: "center", textAlign: "center", border: 0 }}
+              onClick={() => (voice.listening ? voice.stop() : voice.start())} aria-pressed={voice.listening}>
+              <Icon name="mic" /> <b style={{ fontSize: 13 }}>{voice.listening ? "Ouvindo… toque para parar" : "Buscar por áudio"}</b>
             </button>
             <button type="button" className="shortcut" style={{ minHeight: 84, alignItems: "center", textAlign: "center", border: 0 }} onClick={() => replace({ name: "refill" })}>
               <Icon name="pill" /> <b style={{ fontSize: 13 }}>Meus medicamentos</b>

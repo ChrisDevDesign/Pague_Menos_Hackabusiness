@@ -3,6 +3,7 @@ import { useNav } from "../nav";
 import { money } from "../services/format";
 import { useApp } from "../state/app";
 import { Icon } from "./Icon";
+import { OwnBrandTag } from "./OwnBrandTag";
 import { ProductImage } from "./ProductImage";
 
 export function discountPct(p: Product): number {
@@ -28,6 +29,7 @@ export function ProductCard({ product: p, tag }: { product: Product; tag?: strin
         <ProductImage product={p} />
       </button>
       <div className="body">
+        {p.ownBrand ? <OwnBrandTag small /> : null}
         <button className="name" style={{ textAlign: "left" }} onClick={() => push({ name: "product", id: p.id })}>
           {p.name}
         </button>

@@ -144,6 +144,10 @@ export interface Product {
   categoryIds: string[];
   /** Fotos reais sem marca; vazio enquanto o banco de imagens não foi revisado. */
   images: ProductImage[];
+  /** Produto da marca própria Pague Menos (#13): preferido na montagem dos kits de dermo e higiene. */
+  ownBrand?: boolean;
+  /** Para item da marca própria: id do produto de origem que ele substitui. */
+  ownBrandOf?: string;
   domain: ProductDomain;
   /** null = venda livre; "receita_simples" = medicamento (receita SIMULADA no protótipo). */
   rx: null | "receita_simples";
@@ -153,7 +157,7 @@ export interface Product {
 export interface ProductImage {
   src: string;
   alt: string;
-  credit: { source: "Pexels"; photographer: string; photographerUrl: string; pageUrl: string };
+  credit: { source: "Pexels" | "Unsplash"; photographer: string; photographerUrl: string; pageUrl: string };
 }
 
 export interface Intent {

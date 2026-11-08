@@ -1,12 +1,14 @@
 // Conversa na barra de busca: a pessoa escreve do jeito dela e o motor responde com texto, kits, produtos e ações.
 // O app só envia a frase, o `context` da resposta anterior e ids. Dados de saúde da pessoa nunca saem daqui.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { HScroll } from "../components/HScroll";
 import { PersonaAvatar } from "../components/Avatar";
 import { BasketButton } from "../components/Bars";
 import { Icon } from "../components/Icon";
 import { KitCard } from "../components/KitCard";
 import { ProductCard } from "../components/ProductCard";
 import { ProductImage } from "../components/ProductImage";
+import { MicButton, VoicePanel, useVoice } from "../components/Voice";
 import type { ChatAction, ChatContext, Kit, SearchResponse, SimilarOption, SkinType, StepId } from "../contracts/types";
 import { STEP_LABEL, TIER_LABEL } from "../contracts/types";
 import { showsTabBar, useNav, useServices } from "../nav";
@@ -82,8 +84,13 @@ export function Chat({ initial }: { initial?: string }) {
     void send(t);
   };
 
+  // #11: falar em vez de digitar; a frase ouvida é enviada sozinha
+  const voice = useVoice((t) => { setText(""); void send(t); });
+
   const last = chat.messages[chat.messages.length - 1];
   const chips = last?.role === "bot" && !chat.pending ? last.res?.suggestions ?? (chat.messages.length <= 1 ? WELCOME_SUGGESTIONS : []) : [];
+  // #23: a pergunta do tipo de pele vai para a faixa de sugestões (opcional), em vez de um painel grande no meio da conversa
+  const skinAsk = last?.role === "bot" && !chat.pending ? last.res?.clarification ?? null : null;
   const engine = search.engine;
 
   return (
@@ -115,12 +122,17 @@ export function Chat({ initial }: { initial?: string }) {
         </div>
       </div>
 
-      {chips.length ? (
-        <div className="chat-chips" aria-label="Sugestões">
+      {chips.length || skinAsk ? (
+        <HScroll className="chat-chips" aria-label="Sugestões">
+          {skinAsk ? <span className="chips-label">Sua pele (opcional):</span> : null}
+          {skinAsk?.options.map((o) => (
+            <button key={o.value} className="chip ask-skin" onClick={() => void send(`minha pele é ${o.value as SkinType}`)}>{o.label}</button>
+          ))}
+          {skinAsk && chips.length ? <span className="chips-sep" aria-hidden="true" /> : null}
           {chips.map((c) => (
             <button key={c} className="chip" onClick={() => void send(c)}>{c}</button>
           ))}
-        </div>
+        </HScroll>
       ) : null}
       <p className="footnote chat-privacy">
         {consent.useExternalLanguageService
@@ -128,9 +140,11 @@ export function Chat({ initial }: { initial?: string }) {
           : "O serviço externo de linguagem está desligado: nenhuma frase sai daqui, e eu entendo menos. "}
         <button type="button" className="link plain" onClick={() => push({ name: "privacy" })}>Privacidade e dados</button>
       </p>
+      <VoicePanel voice={voice} hint="Fale do seu jeito, por exemplo: kit para pele oleosa até 150 reais" />
       <form className="composer" onSubmit={submit} role="search">
         <label className="sr-only" htmlFor="chat-q">Mensagem</label>
-        <input id="chat-q" value={text} onChange={(e) => setText(e.target.value)} placeholder="Escreva aqui, do seu jeito" autoComplete="off" enterKeyHint="send" />
+        <input id="chat-q" value={voice.listening ? voice.text : text} onChange={(e) => setText(e.target.value)} placeholder={voice.listening ? "Ouvindo…" : "Escreva ou fale, do seu jeito"} autoComplete="off" enterKeyHint="send" readOnly={voice.listening} />
+        <MicButton voice={voice} />
         <button className="send" type="submit" aria-label="Enviar" disabled={!text.trim() || chat.pending}><Icon name="send" size={22} /></button>
       </form>
     </div>
@@ -157,7 +171,7 @@ function Message({ m, isLast, onSend, storeName, push }: { m: ChatMsg; isLast: b
   );
 }
 
-function BotBody({ res, isLast, onSend, storeName, push }: { res: SearchResponse; isLast: boolean; onSend: (q: string) => void; storeName: string | null; push: ReturnType<typeof useNav>["push"] }) {
+function BotBody({ res, onSend, storeName, push }: { res: SearchResponse; isLast: boolean; onSend: (q: string) => void; storeName: string | null; push: ReturnType<typeof useNav>["push"] }) {
   const a = res.action as ChatAction | undefined;
   return (
     <>
@@ -169,18 +183,18 @@ function BotBody({ res, isLast, onSend, storeName, push }: { res: SearchResponse
       {res.kits.length && a?.type !== "delivery_quote" && a?.type !== "swap_options" && a?.type !== "show_similars" ? (
         <>
           {res.intent.storeId && storeName ? <p className="chat-meta"><Icon name="store" size={16} /> Só com o estoque da {storeName}</p> : null}
-          <div className="kit-strip" tabIndex={0} aria-label="Deslize para ver os kits">
+          <HScroll className="kit-strip" tabIndex={0} aria-label="Deslize para ver os kits">
             {res.kits.map((k) => <KitCard key={k.id} kit={k} onOpen={() => push({ name: "kit", kit: k, intent: res.intent })} />)}
-          </div>
+          </HScroll>
         </>
       ) : null}
       {res.notes.filter((n) => n !== res.reply).map((n) => <div key={n} className="note"><Icon name="info" size={18} /><p>{n}</p></div>)}
 
       {a?.type === "show_products" && res.products.length ? (
-        <div className="hscroll chat-products">{res.products.slice(0, 8).map((p) => <ProductCard key={p.id} product={p} />)}</div>
+        <HScroll className="hscroll chat-products">{res.products.slice(0, 8).map((p) => <ProductCard key={p.id} product={p} />)}</HScroll>
       ) : null}
       {res.kitsStatus === "not_applicable" && !a?.type?.match(/show_products|show_similars|open_refill|delivery/) && res.products.length ? (
-        <div className="hscroll chat-products">{res.products.slice(0, 8).map((p) => <ProductCard key={p.id} product={p} />)}</div>
+        <HScroll className="hscroll chat-products">{res.products.slice(0, 8).map((p) => <ProductCard key={p.id} product={p} />)}</HScroll>
       ) : null}
 
       {a?.type === "open_refill" ? (
@@ -191,14 +205,6 @@ function BotBody({ res, isLast, onSend, storeName, push }: { res: SearchResponse
       {a?.type === "swap_options" ? <SwapBlock res={res} action={a} onSend={onSend} /> : null}
       {a?.type === "show_similars" ? <SimilarsBlock res={res} action={a} push={push} /> : null}
 
-      {res.clarification && isLast ? (
-        <div className="panel" aria-label="Pergunta rápida">
-          <b>{res.clarification.question}</b>
-          <div className="chips">
-            {res.clarification.options.map((o) => <button key={o.value} className="chip" onClick={() => onSend(`minha pele é ${(o.value as SkinType)}`)}>{o.label}</button>)}
-          </div>
-        </div>
-      ) : null}
     </>
   );
 }

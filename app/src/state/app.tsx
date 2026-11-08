@@ -3,10 +3,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, type ReactNode } from "react";
 import type { ChatContext, FulfillmentMode, Intent, Kit, Product, SearchResponse, Store } from "../contracts/types";
 import { PERSONA, type ConsentFlags } from "../persona";
-import { RX_MAX_QTY, clearSession, loadSession, saveSession } from "../services/cartStorage";
+import { RX_MAX_QTY, loadSession, saveSession } from "../services/cartStorage";
 export { RX_MAX_QTY };
 import { readExternalChoice, saveExternalChoice } from "../services/consentStorage";
 import { externalLanguage } from "../services/searchService";
+import { newSubscription, sampleSubscription, type Subscription } from "../services/subscriptions";
+export type { Subscription };
 
 export type SubscriptionDays = 0 | 30 | 60;
 
@@ -62,6 +64,8 @@ interface State {
   store: Store | null; // loja de retirada/expressa escolhida
   mode: FulfillmentMode | null;
   orders: Order[];
+  /** Assinaturas de kit (#9): criadas ao fechar o pedido; editáveis em Mais > Assinaturas. */
+  subscriptions: Subscription[];
   walletPendingCents: number;
   toast: { text: string; action?: "cart" } | null;
 }
@@ -93,6 +97,8 @@ type Action =
   | { type: "setStore"; store: Store | null }
   | { type: "setMode"; mode: FulfillmentMode | null }
   | { type: "placeOrder"; order: Order }
+  | { type: "subSet"; sub: Subscription; toast?: string }
+  | { type: "subCancel"; id: string }
   | { type: "clearSession" }
   | { type: "toast"; text: string; action?: "cart" }
   | { type: "hideToast" };
@@ -216,10 +222,21 @@ export function reducer(s: State, a: Action): State {
         lines: [],
         rxDocs: [],
         orders: [a.order, ...s.orders],
+        subscriptions: [
+          ...(a.order.lines ?? []).flatMap((l) =>
+            l.type === "kit" && l.everyDays
+              ? [newSubscription({ id: `s_${a.order.id}_${l.key}`, kit: l.kit, intent: l.intent, everyDays: l.everyDays, createdAt: a.order.createdAt, storeName: a.order.storeName })]
+              : []),
+          ...s.subscriptions,
+        ],
         walletPendingCents: s.walletPendingCents + a.order.cashbackCents,
       };
+    case "subSet":
+      return { ...s, subscriptions: s.subscriptions.map((x) => (x.id === a.sub.id ? a.sub : x)), toast: a.toast ? { text: a.toast } : s.toast };
+    case "subCancel":
+      return { ...s, subscriptions: s.subscriptions.filter((x) => x.id !== a.id), toast: { text: "Assinatura cancelada. Nenhum envio novo será feito." } };
     case "clearSession":   // "Apagar cesta e pedidos deste aparelho" (Privacidade)
-      return { ...s, lines: [], rxDocs: [], orders: [], walletPendingCents: 0, store: null, mode: null };
+      return { ...s, lines: [], rxDocs: [], orders: [], subscriptions: [], walletPendingCents: 0, store: null, mode: null };
     case "toast":
       return { ...s, toast: { text: a.text, action: a.action } };
     case "hideToast":
@@ -256,6 +273,7 @@ export const initialState: State = {
   store: null,
   mode: null,
   orders: [],
+  subscriptions: [],
   walletPendingCents: 0,
   toast: null,
 };
@@ -278,14 +296,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatchRaw] = useReducer(reducer, initialState, (s: State): State => {
     const saved = readExternalChoice();   // #42: a escolha da pessoa sobrevive a recarregar
     const sess = loadSession();           // #48: cesta e pedidos também
-    const base: State = { ...s, ...sess, lines: sess.lines ?? s.lines, rxDocs: sess.rxDocs ?? s.rxDocs, orders: sess.orders ?? s.orders };
+    // primeira visita (nada guardado): uma assinatura de exemplo da persona, para a tela não começar vazia
+    const sample = sess.subscriptions === undefined ? sampleSubscription() : null;
+    const subscriptions = sess.subscriptions ?? (sample ? [sample] : []);
+    const base: State = { ...s, ...sess, lines: sess.lines ?? s.lines, rxDocs: sess.rxDocs ?? s.rxDocs, orders: sess.orders ?? s.orders, subscriptions };
     return saved === undefined ? base : { ...base, consent: { ...base.consent, useExternalLanguageService: saved } };
   });
   useEffect(() => {
-    const { lines, rxDocs, orders, walletPendingCents, store, mode } = state;
-    if (!lines.length && !orders.length && !store && !mode && !rxDocs.length && !walletPendingCents) clearSession();
-    else saveSession({ lines, rxDocs, orders, walletPendingCents, store, mode });
-  }, [state.lines, state.rxDocs, state.orders, state.walletPendingCents, state.store, state.mode]);
+    const { lines, rxDocs, orders, subscriptions, walletPendingCents, store, mode } = state;
+    saveSession({ lines, rxDocs, orders, subscriptions, walletPendingCents, store, mode });
+  }, [state.lines, state.rxDocs, state.orders, state.subscriptions, state.walletPendingCents, state.store, state.mode]);
   const dispatch = useCallback((a: Action) => {
     if (a.type === "setConsent" && a.key === "useExternalLanguageService") saveExternalChoice(a.value);
     dispatchRaw(a);

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { HScroll } from "../components/HScroll";
 import { ResultsBar } from "../components/Bars";
 import { BottomSheet } from "../components/BottomSheet";
 import { BudgetPanel } from "../components/BudgetPanel";
@@ -174,7 +175,7 @@ function KitZone({ res, storeName, onPatch, onOpen, onStores }: {
       <div className="title">
         <Icon name="sparkle" size={20} /> Kits inteligentes para o seu pedido
       </div>
-      <IntentChips intent={intent} onEditSkin={() => setSheet(true)} onEditBudget={() => setBudgetOpen(true)} />
+      <IntentChips intent={intent} onEditSkin={() => setSheet(true)} onEditBudget={() => setBudgetOpen(true)} askSkin={!!res.clarification} oneLine />
       <button className="row" style={{ fontSize: 13.5, color: "var(--text-2)", textAlign: "left", minHeight: 36 }} onClick={onStores}>
         <Icon name="store" size={18} />
         <span className="grow">{storeName ? `Só com o estoque da ${storeName}` : "Estoque para entrega em casa"}</span>
@@ -206,24 +207,15 @@ function KitZone({ res, storeName, onPatch, onOpen, onStores }: {
       ) : null}
 
       {res.kits.length ? (
-        <div className="kit-strip" tabIndex={0} aria-label="Deslize para ver os kits">
+        <HScroll className="kit-strip" tabIndex={0} aria-label="Deslize para ver os kits">
           {res.kits.map((k) => (
             <KitCard key={k.id} kit={k} onOpen={() => onOpen(k)} />
           ))}
-        </div>
+        </HScroll>
       ) : null}
 
-      {res.clarification ? (
-        <div className="panel" aria-label="Pergunta rápida">
-          <b>{res.clarification.question}</b>
-          <div className="chips">
-            {res.clarification.options.map((o) => (
-              <button key={o.value} className="chip" onClick={() => onPatch({ skinType: o.value })}>{o.label}</button>
-            ))}
-          </div>
-          <span className="footnote" style={{ textAlign: "left" }}>Opcional. Os kits acima já valem para qualquer tipo de pele.</span>
-        </div>
-      ) : null}
+      {/* #21: a pergunta do tipo de pele virou o chip "Qual é a sua pele?" lá em cima (abre a folha de opções);
+          sem o painel aqui, a lista de itens aparece logo abaixo dos kits */}
 
       {budgetOpen ? (
         <BottomSheet title="Quanto quer gastar?" onClose={() => setBudgetOpen(false)}>
@@ -233,6 +225,7 @@ function KitZone({ res, storeName, onPatch, onOpen, onStores }: {
 
       {sheet ? (
         <BottomSheet title="Como é a sua pele?" onClose={() => setSheet(false)}>
+          <p className="sheet-text">Opcional. Os kits já valem para qualquer tipo de pele; com a sua, eles ficam mais certeiros.</p>
           {SKINS.map((s) => (
             <button key={s.value} className="opt" onClick={() => { setSheet(false); onPatch({ skinType: s.value }); }}>
               <div className="info"><b>{s.label}</b></div>
@@ -283,7 +276,8 @@ export function ProductList({ products, emptyText, title }: { products: Product[
         </button>
       </div>
       {title ? <h2 className="sec-title" style={{ fontSize: 18, margin: "12px 16px 0" }}>{title}</h2> : null}
-      <p className="count">{shown.length} {shown.length === 1 ? "produto encontrado" : "produtos encontrados"}</p>
+      {/* #21: com título (que já traz o total), a contagem só aparece quando um filtro muda o número */}
+      {!title || shown.length !== products.length ? <p className="count">{shown.length} {shown.length === 1 ? "produto encontrado" : "produtos encontrados"}</p> : <div style={{ height: 10 }} />}
       <div className="grid2 listpad">
         {shown.map((p) => (
           <ProductCard key={p.id} product={p} />

@@ -16,16 +16,18 @@ import { createMockSearchService } from "./mock/mockSearchService";
 export const DEFAULT_ENGINE_URL = "http://127.0.0.1:8787";
 
 /** O motor devolve produtos sem foto; as fotos (banco de imagens) moram no app. Preço e estoque vêm sempre do motor. */
+/** #20: o catálogo do motor ainda usa travessão (U+2014) nos nomes de remédio; o app mostra no padrão de farmácia ("Dipirona 1 g, 10 comprimidos"). */
+export const noDash = (s: string) => s.replace(/\s*\u2014\s*/g, ", ");
 export function withImages<T extends Product>(p: T): T {
   const local = PRODUCT_BY_ID.get(p.id);
-  const q = noStrike(p);
+  const q = { ...noStrike(p), name: noDash(p.name), description: noDash(p.description) };
   return local && local.images.length && !q.images.length ? { ...q, images: local.images } : q;
 }
 function enrichKit(k: Kit): Kit {
   return { ...k, items: k.items.map((i) => ({ ...i, product: withImages(i.product) })) };
 }
 function enrichResponse(r: SearchResponse): SearchResponse {
-  return { ...r, kits: r.kits.map(enrichKit), closestKit: r.closestKit ? enrichKit(r.closestKit) : null, products: r.products.map(withImages) };
+  return { ...r, reply: r.reply ? noDash(r.reply) : r.reply, notes: r.notes.map(noDash), kits: r.kits.map(enrichKit), closestKit: r.closestKit ? enrichKit(r.closestKit) : null, products: r.products.map(withImages) };
 }
 
 /**

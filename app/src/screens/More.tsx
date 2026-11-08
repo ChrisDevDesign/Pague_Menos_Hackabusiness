@@ -1,11 +1,11 @@
 import { PersonaAvatar } from "../components/Avatar";
 import { TitleBar } from "../components/Bars";
 import { Icon, type IconName } from "../components/Icon";
-import { ProductImage } from "../components/ProductImage";
 import type { ProductImage as Img } from "../contracts/types";
 import { BRAND } from "../brand";
 import { SIMULATED_LOCATION } from "../location";
 import { PERSONA } from "../persona";
+import { CATEGORY_PHOTOS, KIT_PROMO_PHOTO, PROFILE_PHOTO, photoCredit, photoUrl } from "../photos";
 import { useNav, useServices, type View } from "../nav";
 import { money } from "../services/format";
 import { useApp } from "../state/app";
@@ -94,32 +94,6 @@ export function Orders() {
   );
 }
 
-export function Subscriptions() {
-  const { orders } = useApp();
-  const subs = orders.flatMap((o) => o.lines.filter((l) => l.type === "kit" && l.everyDays).map((l) => ({ o, l })));
-  return (
-    <div className="screen">
-      <TitleBar title="Assinaturas" />
-      <div className="scroll">
-        <div className="pad">
-          <div className="note"><Icon name="repeat" size={18} /><p>Assine um kit de rotina e receba de novo a cada 30 ou 60 dias. Sem custo de assinatura (simulado).</p></div>
-          {!subs.length ? <p style={{ color: "var(--text-2)" }}>Nenhuma assinatura. Escolha "Assinar" na tela de um kit.</p> : null}
-          {subs.map(({ o, l }) =>
-            l.type === "kit" ? (
-              <article key={o.id + l.key} className="panel" style={{ gap: 6 }}>
-                <b style={{ fontWeight: 500 }}>Kit {l.kit.title}</b>
-                <small style={{ color: "var(--text-2)" }}>A cada {l.everyDays} dias · próximo envio em {new Date(Date.parse(o.createdAt) + l.everyDays * 86400000).toLocaleDateString("pt-BR")}</small>
-                <div className="kit-thumbs">{l.kit.items.map((i) => <ProductImage key={i.product.id} product={i.product} size={44} />)}</div>
-                <div className="sumrow total"><span>{money(l.kit.totalCents)} por envio</span></div>
-              </article>
-            ) : null,
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function Wallet() {
   const { walletPendingCents, cashbackCents } = useApp();
   return (
@@ -179,8 +153,10 @@ export function Credits() {
   const { commerce } = useServices();
   const data = useAsync(async () => {
     const [cats, home] = await Promise.all([commerce.categories(), commerce.home()]);
-    const all = await commerce.products(cats.find((c) => c.id === "dermo")?.productIds ?? []);
-    const imgs: Img[] = [...all.flatMap((p) => p.images), ...home.banners];
+    const all = await commerce.products([...new Set(cats.flatMap((c) => c.productIds))]);
+    // #16/#18: retrato da persona, fotos das categorias e do atalho de kit também entram nos créditos
+    const extra: Img[] = [PROFILE_PHOTO, KIT_PROMO_PHOTO, ...Object.values(CATEGORY_PHOTOS)].map((f) => ({ src: photoUrl(f, 80), alt: "", credit: photoCredit(f) }));
+    const imgs: Img[] = [...extra, ...all.flatMap((p) => p.images), ...home.banners];
     const seen = new Map<string, Img>();
     for (const i of imgs) seen.set(i.credit.pageUrl, i);
     return [...seen.values()];
@@ -191,15 +167,15 @@ export function Credits() {
       <div className="scroll">
         <div className="pad">
           <p style={{ lineHeight: 1.5 }}>
-            Fotos fornecidas pelo <a className="link" href="https://www.pexels.com" target="_blank" rel="noreferrer">Pexels</a>, sob a{" "}
-            <a className="link" href="https://www.pexels.com/license/" target="_blank" rel="noreferrer">licença Pexels</a>. Embalagens sem marca; os produtos do app são fictícios.
+            Fotos do <a className="link" href="https://unsplash.com/?utm_source=pague_menos_prototipo&utm_medium=referral" target="_blank" rel="noreferrer">Unsplash</a>, sob a{" "}
+            <a className="link" href="https://unsplash.com/license" target="_blank" rel="noreferrer">licença Unsplash</a>. São fotos ilustrativas, escolhidas sem marca legível; os produtos do app são fictícios.
           </p>
           {data.data && !data.data.length ? <div className="note warn"><Icon name="info" size={18} /><p>O banco de imagens ainda não foi revisado. Por enquanto, os produtos aparecem com desenho provisório.</p></div> : null}
           <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.8, fontSize: 14 }}>
             {(data.data ?? []).map((i) => (
               <li key={i.credit.pageUrl}>
                 Foto de <a className="link" href={i.credit.photographerUrl} target="_blank" rel="noreferrer">{i.credit.photographer}</a> no{" "}
-                <a className="link" href={i.credit.pageUrl} target="_blank" rel="noreferrer">Pexels</a>
+                <a className="link" href={i.credit.pageUrl} target="_blank" rel="noreferrer">{i.credit.source}</a>
               </li>
             ))}
           </ul>

@@ -1,6 +1,7 @@
 // #48: cesta, receitas anexadas (simuladas) e pedidos ficam neste aparelho e sobrevivem a recarregar a página.
 import type { FulfillmentMode, Intent, Kit, Product, Store } from "../contracts/types";
 import type { CartLine, Order } from "../state/app";
+import type { Subscription } from "./subscriptions";
 import { PRODUCT_BY_ID } from "./mock/catalogData";
 
 /** #43 (RDC 44/2009): a receita limita a quantidade; neste protótipo, a receita simulada vale por 2 caixas por item. */
@@ -12,6 +13,8 @@ export interface SavedSession {
   lines: CartLine[];
   rxDocs: string[];
   orders: Order[];
+  /** Ausente = sessão de antes das assinaturas (ou nunca guardada). */
+  subscriptions?: Subscription[];
   walletPendingCents: number;
   store: Store | null;
   mode: FulfillmentMode | null;
@@ -25,8 +28,8 @@ const isObj = (x: unknown): x is Record<string, unknown> => !!x && typeof x === 
 function freshProduct(saved: unknown): Product | null {
   const base = PRODUCT_BY_ID.get(isObj(saved) && isStr(saved.id) ? saved.id : "");
   if (!base) return null;
-  const imgs = isObj(saved) ? saved.images : undefined;
-  return Array.isArray(imgs) ? { ...base, images: imgs as Product["images"] } : base;
+  // #12: a foto vem sempre do catálogo de hoje (antes, uma cesta guardada sem foto apagava a foto nova)
+  return base;
 }
 
 /** Kit só entra inteiro: todos os campos que as telas leem, e os produtos de hoje; se faltar algo, descarta o kit. */
@@ -72,6 +75,15 @@ function cleanOrder(o: unknown): Order | null {
   return { ...(o as unknown as Order), lines: lines as CartLine[] };
 }
 
+/** Assinatura só entra com kit válido (produtos de hoje), frequência 30/60 e datas legíveis. */
+function cleanSubscription(x: unknown): Subscription | null {
+  if (!isObj(x) || !isStr(x.id) || !isStr(x.nextAt) || !isStr(x.createdAt) || Number.isNaN(Date.parse(x.nextAt))) return null;
+  if (!(x.everyDays === 30 || x.everyDays === 60) || !(x.status === "ativa" || x.status === "pausada") || !isObj(x.intent)) return null;
+  const kit = cleanKit(x.kit);
+  if (!kit) return null;
+  return { ...(x as unknown as Subscription), kit, skips: isNum(x.skips) ? x.skips : 0 };
+}
+
 export function loadSession(): Partial<SavedSession> {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? "null") as Partial<SavedSession> | null;
@@ -82,6 +94,9 @@ export function loadSession(): Partial<SavedSession> {
       lines,
       rxDocs: (Array.isArray(raw.rxDocs) ? raw.rxDocs : []).filter((id): id is string => typeof id === "string" && inCart.has(id)),
       orders: (Array.isArray(raw.orders) ? raw.orders : []).map(cleanOrder).filter((o): o is Order => o !== null).slice(0, MAX_ORDERS),
+      ...(Array.isArray(raw.subscriptions)
+        ? { subscriptions: raw.subscriptions.map(cleanSubscription).filter((x): x is Subscription => x !== null) }
+        : {}),
       walletPendingCents: isNum(raw.walletPendingCents) ? raw.walletPendingCents : 0,
       store: raw.store && typeof raw.store.id === "string" ? raw.store : null,
       mode: raw.mode === "retirada" || raw.mode === "expressa" || raw.mode === "agendada" ? raw.mode : null,

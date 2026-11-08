@@ -141,9 +141,11 @@ export function candidatesFor(step: StepId, ctx: Ctx): { list: Product[]; relaxe
     const clean = base.filter((p) => !specialtyMismatch(p, ctx));
     return clean.length >= 3 ? clean : base;
   };
+  // #13: nos kits de dermo e higiene entram só itens da marca própria Pague Menos (quando há algum que sirva)
+  const own = (l: Product[]) => (l.some((p) => p.ownBrand) ? l.filter((p) => p.ownBrand) : l);
   const strict = filt(false);
-  if (strict.length > 0) return { list: strict, relaxed: false };
-  return { list: filt(true), relaxed: true };
+  if (strict.length > 0) return { list: own(strict), relaxed: false };
+  return { list: own(filt(true)), relaxed: true };
 }
 
 function shortlist(list: Product[], ctx: Ctx): Product[] {

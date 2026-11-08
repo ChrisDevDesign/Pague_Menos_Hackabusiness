@@ -1,4 +1,5 @@
 import { BlueSearchBar } from "../components/Bars";
+import { HScroll } from "../components/HScroll";
 import { KitCard } from "../components/KitCard";
 import { ProductCard } from "../components/ProductCard";
 import { useNav, useServices } from "../nav";
@@ -32,12 +33,12 @@ export function Favorites() {
             {favoriteKits.length ? (
               <section aria-label="Kits favoritos">
                 <h2 style={{ fontSize: 19, marginBottom: 10 }}>Kits salvos</h2>
-                <div className="kit-strip">
+                <HScroll className="kit-strip">
                   {favoriteKits.map((k) => (
                     <KitCard key={k.id + k.items.map((i) => i.product.id).join()} kit={k}
                       onOpen={() => push({ name: "kit", kit: k, intent: { goals: [k.goal], primaryGoal: k.goal, budgetCents: null, skinType: null, preferences: [], storeId: k.storeId, missing: [] } })} />
                   ))}
-                </div>
+                </HScroll>
               </section>
             ) : null}
             {data.data?.length ? (

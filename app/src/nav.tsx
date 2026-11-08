@@ -6,7 +6,7 @@ export type Tab = "home" | "chat" | "ofertas" | "favoritos" | "mais";
 
 export type View =
   | { name: "home" }
-  | { name: "searchFocus"; initial?: string }
+  | { name: "searchFocus"; initial?: string; voice?: boolean }
   | { name: "chat"; initial?: string }
   | { name: "refill" }
   | { name: "privacy" }
@@ -25,6 +25,7 @@ export type View =
   | { name: "mais" }
   | { name: "orders" }
   | { name: "subscriptions" }
+  | { name: "subscription"; id: string }
   | { name: "wallet" }
   | { name: "credits" }
   | { name: "stores" };

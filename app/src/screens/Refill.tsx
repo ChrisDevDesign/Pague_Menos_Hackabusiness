@@ -34,6 +34,7 @@ export function Refill() {
   const hasHere = (m: ContinuousMedication) => hasStockHere({ productId: m.productId, chosenId: choice[m.productId]?.id, avail: data.data?.avail, storeId,
                                                               centralStockQty: data.data?.byId.get(m.productId)?.stockQty });
   const marked = meds.filter((m) => picked[m.productId]);
+  const dueCount = meds.filter((m) => needsRefill(m)).length;
   const unavailable = marked.filter((m) => !hasHere(m));
   const lineItems = marked.filter(hasHere).map((m) => ({ m, p: chosen(m) })).filter((x): x is { m: ContinuousMedication; p: Product } => !!x.p);
   const itemsCents = lineItems.reduce((t, { p }) => t + p.priceCents, 0);   // #41: o total mostrado é o que a cesta cobra (o desconto da reposição automática não é aplicado no protótipo)
@@ -65,16 +66,20 @@ export function Refill() {
       <TitleBar title="Meus medicamentos" />
       <div className="scroll">
         <div className="pad">
-          <div className="note ok" role="note">
-            <Icon name="lock" size={18} />
-            <p><b>Fica só neste aparelho.</b> A lista dos seus medicamentos nunca vai para o assistente de compras. Aqui você repõe o que já usa em poucos toques.</p>
-          </div>
-
+          {/* #19: resumo no topo, loja e aviso de privacidade discreto */}
+          <section className="refill-hero" aria-label="Resumo">
+            <span className="refill-hero-ico"><Icon name="pill" size={26} /></span>
+            <span className="grow">
+              <b>{meds.length} de uso contínuo</b>
+              <small>{dueCount ? `${dueCount} ${dueCount === 1 ? "acaba" : "acabam"} em até ${REFILL_RULES.alertDaysBefore} dias` : "Nenhum acabando nos próximos dias"}</small>
+            </span>
+          </section>
           <button className="row loc-row" onClick={() => push({ name: "stores" })}>
             <Icon name="store" size={20} />
-            <span className="grow">{store ? `Retirar na ${store.name} · ${store.neighborhood}` : "Escolher loja de retirada"}</span>
-            <Icon name="chevron" size={18} />
+            <span className="grow">{store ? <>Retirar na <b>{store.name}</b> · {store.neighborhood}</> : "Escolher loja de retirada"}</span>
+            <span className="link plain">Trocar</span>
           </button>
+          <p className="privacy-line"><Icon name="lock" size={15} /> Esta lista fica só neste aparelho e não vai para o assistente de compras.</p>
 
           {data.loading && !data.data ? <div className="skeleton" style={{ height: 220 }} /> : null}
           {data.error ? <div className="note danger" role="alert"><Icon name="alert" size={18} /><p>{data.error}</p></div> : null}
@@ -127,12 +132,19 @@ export function Refill() {
       </div>
       <div className="summary">
         <small className="foot center" role="status">
-          {!marked.length ? "Marque o que quer repor." : !rxAttached ? "Anexe a receita simulada para repor." : !lineItems.length ? "Escolha um equivalente em estoque para seguir."
-            : `${lineItems.length} ${lineItems.length === 1 ? "item" : "itens"} · ${money(itemsCents)}${unavailable.length ? ` · fora da conta: ${unavailable.map((m) => m.label).join(", ")} (sem estoque nesta loja)` : ""}`}
+          {!marked.length ? "Marque o que quer repor." : !rxAttached ? "Para repor remédio com receita, anexe a receita (simulada)." : !lineItems.length ? "Escolha um equivalente em estoque para seguir."
+            : `${lineItems.length} ${lineItems.length === 1 ? "item" : "itens"} · ${money(itemsCents)}${unavailable.length ? ` · fora da conta, sem estoque nesta loja: ${unavailable.map((m) => m.label.replace(/\s*\(uso contínuo\)/i, "")).join(", ")}` : ""}`}
         </small>
-        <button className="btn primary block" disabled={!canBuy} onClick={buy}>
-          <Icon name="basketPlus" size={22} /> {lineItems.length ? `Repor ${lineItems.length} ${lineItems.length === 1 ? "item" : "itens"} na cesta` : "Repor na cesta"}
-        </button>
+        {/* #19: falta a receita? o botão principal vira a ação que falta, em vez de ficar apagado */}
+        {marked.length && !rxAttached ? (
+          <button className="btn primary block" onClick={() => dispatch({ type: "setRx", on: true })}>
+            <Icon name="receipt" size={22} /> Anexar receita simulada
+          </button>
+        ) : (
+          <button className="btn primary block" disabled={!canBuy} onClick={buy}>
+            <Icon name="basketPlus" size={22} /> {lineItems.length ? `Repor ${lineItems.length} ${lineItems.length === 1 ? "item" : "itens"} na cesta` : "Repor na cesta"}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -144,6 +156,7 @@ function MedCard({ m, product, avail, storeId, picked, onPick, auto, onAuto, rem
   onChoice: (c: Product) => void; onReset: () => void;
 }) {
   const { search } = useServices();
+  const { dispatch } = useApp();
   const left = daysLeft(m);
   const urgent = needsRefill(m);
   const pct = Math.max(4, Math.min(100, Math.round((m.unitsLeft / m.packUnits) * 100)));
@@ -164,28 +177,47 @@ function MedCard({ m, product, avail, storeId, picked, onPick, auto, onAuto, rem
 
   return (
     <article ref={cardRef} tabIndex={-1} className={`panel med ${urgent && reminders ? "urgent" : ""}`} aria-label={m.label}>
-      <label className="row med-head">
+      <div className="med-top">
+        <span className="med-tag">{m.label.replace(/\s*\(uso contínuo\)/i, "")}</span>
+        {urgent && reminders ? <span className="med-days"><Icon name="bell" size={13} /> Acaba em {left} {left === 1 ? "dia" : "dias"}</span> : <span className="med-days calm">{left} dias</span>}
+      </div>
+      <label className="med-head">
         <input type="checkbox" checked={picked} onChange={(e) => onPick(e.target.checked)} aria-label={`Incluir ${cur.name} na reposição`} />
-        <span className="grow"><b>{m.label}</b><small>{cur.name}</small>{swapped ? <small className="swap-note">no lugar de {product.name}</small> : null}</span>
-        {urgent && reminders ? <span className="mini warn"><Icon name="bell" size={13} /> {left} {left === 1 ? "dia" : "dias"}</span> : null}
+        <span className="med-photo"><ProductImage product={cur} size={64} /></span>
+        <span className="grow">
+          <b>{cur.name}</b>
+          {swapped ? <small className="swap-note">no lugar de {product.name}</small> : <small>{cur.brand}</small>}
+          {swapped || inStockHere ? <span className="price blue">{money(cur.priceCents)}</span> : null}
+        </span>
       </label>
-      <div className="meter" role="img" aria-label={`Restam ${m.unitsLeft} de ${m.packUnits} unidades, cerca de ${left} dias`}>
-        <div className="fill" style={{ width: `${pct}%` }} />
+      <div className="med-stock">
+        <div className="meter" role="img" aria-label={`Restam ${m.unitsLeft} de ${m.packUnits} unidades, cerca de ${left} dias`}>
+          <div className="fill" style={{ width: `${pct}%` }} />
+        </div>
+        <small>Restam <b>{m.unitsLeft} de {m.packUnits}</b> · acaba por volta de {out}</small>
       </div>
-      <small className="foot">Restam {m.unitsLeft} de {m.packUnits} · acaba por volta de {out}</small>
 
-      <div className="row stockline">
-        <Icon name="store" size={18} />
-        {inStockHere || swapped ? <span className="ok">Em estoque{here ? ` na ${here.store.name}` : ""}</span>
-          : <span className="off">Indisponível{here ? ` na ${here.store.name}` : ""}{nearest ? ` · tem na ${nearest.store.name} (${nearest.distanceKm.toLocaleString("pt-BR")} km)` : ""}</span>}
-      </div>
+      {inStockHere || swapped ? (
+        <div className="stock-pill ok"><Icon name="store" size={16} /><span>Em estoque{here ? ` na ${here.store.name}` : ""}</span></div>
+      ) : (
+        /* #30: falta de estoque em alerta, com saída: retirar em outra loja ou aviso de que nenhuma próxima tem */
+        <div className="stock-alert" role="alert">
+          <Icon name="alert" size={20} />
+          <span className="grow">
+            <b>Sem estoque{here ? ` na ${here.store.name}` : ""}</b>
+            <small>{nearest ? `Tem na ${nearest.store.name}, a ${nearest.distanceKm.toLocaleString("pt-BR")} km. Ou escolha um equivalente abaixo.` : "Sem estoque nas farmácias próximas. Escolha um equivalente abaixo."}</small>
+          </span>
+          {nearest ? (
+            <button className="btn outline blue stock-alert-btn" onClick={() => dispatch({ type: "setStore", store: nearest.store })}>Retirar na {nearest.store.name}</button>
+          ) : null}
+        </div>
+      )}
 
       <p className="sr-only" role="status">{said}</p>
       {swapped || inStockHere ? (
         <div className="med-price">
-          <div className="row"><span className="price blue">{money(cur.priceCents)}</span>
-            {swapped ? <small className="swap-note">{delta(cur.priceCents - product.priceCents)} em relação ao original · sujeito à confirmação do farmacêutico</small> : null}</div>
-          {swapped ? <button className="link plain" onClick={undo}>Desfazer troca e voltar a {product.name}</button> : null}
+          {swapped ? <small className="swap-note">{delta(cur.priceCents - product.priceCents)} em relação ao original · sujeito à confirmação do farmacêutico</small> : null}
+          {swapped ? <button className="btn outline block undo-swap" onClick={undo}><Icon name="repeat" size={18} /> Voltar ao original</button> : null}
         </div>
       ) : (
         <div className="equiv" aria-label="Equivalentes disponíveis">
@@ -206,11 +238,14 @@ function MedCard({ m, product, avail, storeId, picked, onPick, auto, onAuto, rem
         </div>
       )}
 
-      <label className="switch auto">
-        <input type="checkbox" checked={auto} onChange={(e) => onAuto(e.target.checked)} />
-        Reposição automática (sem frete grátis nem desconto: remédio não entra em promoção)
+      {/* #19: chave liga/desliga com texto curto */}
+      <label className="toggle-row">
+        <span className="grow">
+          <b>Repor automaticamente</b>
+          <small>{auto ? `Avisamos ${REFILL_RULES.alertDaysBefore} dias antes de acabar e você confirma cada compra.` : "Remédio não tem frete grátis nem desconto."}</small>
+        </span>
+        <input type="checkbox" role="switch" className="toggle" checked={auto} onChange={(e) => onAuto(e.target.checked)} />
       </label>
-      {auto ? <small className="foot">Avisamos {REFILL_RULES.alertDaysBefore} dias antes de acabar e você confirma antes de cada compra.</small> : null}
     </article>
   );
 }

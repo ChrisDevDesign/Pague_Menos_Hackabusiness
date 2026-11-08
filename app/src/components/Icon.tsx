@@ -5,7 +5,8 @@ export type IconName =
   | "home" | "tag" | "heart" | "heartFill" | "more" | "pin" | "chevron" | "chevronDown" | "chevronUp"
   | "close" | "filter" | "clock" | "share" | "trash" | "plus" | "minus" | "check" | "checkCircle" | "info"
   | "alert" | "shield" | "swap" | "store" | "truck" | "locker" | "map" | "cross" | "wallet" | "repeat"
-  | "box" | "sparkle" | "pill" | "lipstick" | "stroller" | "dumbbell" | "bottle" | "bag" | "paw" | "image" | "user" | "send" | "chat" | "lock";
+  | "box" | "sparkle" | "pill" | "lipstick" | "stroller" | "dumbbell" | "bottle" | "bag" | "paw" | "image" | "user" | "send" | "chat" | "lock"
+  | "settings" | "skip" | "play" | "pause" | "stop";
 
 const P: Record<IconName, ReactNode> = {
   search: (<><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4.5 4.5" /></>),
@@ -60,6 +61,11 @@ const P: Record<IconName, ReactNode> = {
   send: (<><path d="M4 12L20 4l-4.5 16-3.5-6.5z" /><path d="M12 13.5L20 4" /></>),
   chat: (<><path d="M4 5.5h16v10H10l-4.5 3.5v-3.5H4z" /><path d="M8 9.5h8M8 12.5h5" /></>),
   lock: (<><rect x="5" y="10.5" width="14" height="9.5" rx="2" /><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5M12 14v2.5" /></>),
+  settings: (<><path d="M4 7h9M17 7h3M4 17h3M11 17h9" /><circle cx="15" cy="7" r="2.2" /><circle cx="9" cy="17" r="2.2" /></>),
+  skip: (<><path d="M5 6l8 6-8 6z" /><path d="M17 6v12" /></>),
+  play: <path d="M7 5l12 7-12 7z" />,
+  pause: <path d="M8 5v14M16 5v14" />,
+  stop: <rect x="6.5" y="6.5" width="11" height="11" rx="2" />,
 };
 
 export function Icon({ name, size = 22, className, strokeWidth = 1.7 }: { name: IconName; size?: number; className?: string; strokeWidth?: number }) {

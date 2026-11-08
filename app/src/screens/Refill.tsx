@@ -1,9 +1,11 @@
 // Meus medicamentos: REPOSIÇÃO do que a pessoa já usa (lista que fica no aparelho).
 // Os dados (itens, quantidades, receita) ficam no aparelho; o motor só devolve equivalentes a partir de um id de produto.
 import { useMemo, useRef, useState } from "react";
-import { WARN_DAYS, daysLeftOf, usageLine } from "../services/reminders";
+import { boxDays, canAuto, toMed } from "../services/reminders";
 import { PRODUCT_BY_ID } from "../services/mock/catalogData";
-import { AddReminderSheet } from "../components/Reminders";
+import { Stepper } from "../components/Reminders";
+import { BottomSheet } from "../components/BottomSheet";
+import { DateChip } from "../components/DateChip";
 import { TitleBar } from "../components/Bars";
 import { Icon } from "../components/Icon";
 import { ProductImage } from "../components/ProductImage";
@@ -12,42 +14,72 @@ import { useNav, useServices } from "../nav";
 import { DELIVERY_RANK, PERSONA, REFILL_RULES, daysLeft, needsRefill, runOutDate, type ContinuousMedication } from "../persona";
 import { hasStockHere } from "../refillStock";
 import { delta, money } from "../services/format";
-import { maxQty, useApp } from "../state/app";
+import { RX_MAX_QTY, maxQty, useApp } from "../state/app";
 import { useAsync } from "../useAsync";
 
 const PRES: Record<string, string> = { referencia: "Referência", generico: "Genérico", similar: "Similar" };
 
-export function Refill({ add = false }: { add?: boolean }) {
+export function Refill(_: { add?: boolean }) {
   const { commerce } = useServices();
   const { push } = useNav();
-  const { store, storeId, dispatch, refillAuto, rxAttached, consent, refillPick, lines, reminders } = useApp();
-  const [adding, setAdding] = useState(add);
-  const meds = PERSONA.continuousMedications;
-  const ids = meds.map((m) => m.productId);
+  const { store, storeId, dispatch, refillAuto, refillAutoTimes, rxAttached, consent, refillPick, lines, reminders, refillHidden } = useApp();
+  const [autoAsk, setAutoAsk] = useState<{ m: ContinuousMedication; p: Product } | null>(null);
+  // #33: os avisos que a pessoa ligou entram como itens iguais aos remédios da persona
+  const allMeds = useMemo(() => [
+    ...PERSONA.continuousMedications.filter((m) => !refillHidden.includes(m.productId)),
+    ...reminders.filter((r) => !PERSONA.continuousMedications.some((m) => m.productId === r.productId))
+      .flatMap((r) => { const p = PRODUCT_BY_ID.get(r.productId); return p ? [toMed(r, p)] : []; }),
+  ], [reminders, refillHidden]);
+  const ids = allMeds.map((m) => m.productId);
   const data = useAsync(async () => {
     const [prods, avail, delivery] = await Promise.all([commerce.products(ids), commerce.storesFor(ids), commerce.delivery()]);
     return { byId: new Map(prods.map((p) => [p.id, p])), avail, delivery };
-  }, [commerce]);
+  }, [commerce, ids.join()]);
+  // #34: filtro com e sem receita
+  const [filter, setFilter] = useState<"todos" | "rx" | "livre">("todos");
+  const isRx = (m: ContinuousMedication) => !!data.data?.byId.get(m.productId)?.rx;
+  // #39: sem receita primeiro, com receita no fim; dentro de cada grupo, o que acaba antes vem antes
+  const meds = allMeds.filter((m) => filter === "todos" || (filter === "rx") === isRx(m))
+    .sort((a, b) => Number(isRx(a)) - Number(isRx(b)) || daysLeft(a) - daysLeft(b));
+  // #32: caixas para repor, por item (começa em 1)
+  const [qty, setQty] = useState<Record<string, number>>({});
+  const boxesOf = (id: string) => qty[id] ?? 1;
   // equivalente escolhido por item (sem escolha, vale o próprio item); guardado na sessão, só para a loja em que foi escolhido
   const choice = refillPick.storeId === storeId ? refillPick.picks : {};
   const pick = (id: string, product: Product | null) => dispatch({ type: "refillPick", id, product, storeId });
-  const [picked, setPicked] = useState<Record<string, boolean>>(() => Object.fromEntries(meds.map((m) => [m.productId, needsRefill(m)])));
+  const [picked, setPicked] = useState<Record<string, boolean>>(() => Object.fromEntries(allMeds.map((m) => [m.productId, needsRefill(m)])));
+  const isPicked = (m: ContinuousMedication) => picked[m.productId] ?? needsRefill(m);
 
   const chosen = (m: ContinuousMedication): Product | undefined => choice[m.productId] ?? data.data?.byId.get(m.productId);
   // #50: item que a loja escolhida não tem só entra na conta (e na retirada) depois que a pessoa escolhe um equivalente em estoque
   const hasHere = (m: ContinuousMedication) => hasStockHere({ productId: m.productId, chosenId: choice[m.productId]?.id, avail: data.data?.avail, storeId,
                                                               centralStockQty: data.data?.byId.get(m.productId)?.stockQty });
-  const marked = meds.filter((m) => picked[m.productId]);
-  const dueCount = meds.filter((m) => needsRefill(m)).length;
+  const marked = allMeds.filter(isPicked);
+  const dueCount = allMeds.filter((m) => needsRefill(m)).length;
   const unavailable = marked.filter((m) => !hasHere(m));
   const lineItems = marked.filter(hasHere).map((m) => ({ m, p: chosen(m) })).filter((x): x is { m: ContinuousMedication; p: Product } => !!x.p);
-  const itemsCents = lineItems.reduce((t, { p }) => t + p.priceCents, 0);   // #41: o total mostrado é o que a cesta cobra (o desconto da reposição automática não é aplicado no protótipo)
-  const anyAuto = lineItems.some(({ m }) => refillAuto[m.productId]);
-  const canBuy = lineItems.length > 0 && rxAttached;
+  const itemsCents = lineItems.reduce((t, { m, p }) => t + p.priceCents * boxesOf(m.productId), 0);   // #41: o total mostrado é o que a cesta cobra (o desconto da reposição automática não é aplicado no protótipo)
+  const autoOn = (m: ContinuousMedication) => !!refillAuto[m.productId] && !isRx(m);
+  /** Intervalo da reposição automática: quanto uma caixa dura. */
+  const autoEveryOf = (m: ContinuousMedication, p: Product) => {
+    const r = reminders.find((x) => x.productId === m.productId);
+    return r ? boxDays(r, p) : Math.max(1, Math.floor(p.size.value / m.unitsPerDay));
+  };
+  const anyAuto = lineItems.some(({ m }) => autoOn(m));
+  // receita só é pedida se algum item marcado precisa dela (suplemento e higiene não)
+  const needsRx = marked.some(isRx);
+  const canBuy = lineItems.length > 0 && (rxAttached || !lineItems.some(({ p }) => p.rx));
+  const boxesTotal = lineItems.reduce((t, { m }) => t + boxesOf(m.productId), 0);
 
   const buy = () => {
     const full = lineItems.filter(({ p }) => lines.some((l) => l.type === "product" && l.product.id === p.id && l.qty >= maxQty(l)));   // #43: já no limite da receita
-    for (const { p } of lineItems) if (!full.some((f) => f.p.id === p.id)) dispatch({ type: "addProduct", product: p, confirmed: true });
+    for (const { m, p } of lineItems) {
+      if (full.some((f) => f.p.id === p.id)) continue;
+      // #35: reposição automática vai para a cesta com o intervalo de uma caixa; ao comprar, vira assinatura
+      const every = autoOn(m) ? autoEveryOf(m, p) : undefined;
+      const times = every ? refillAutoTimes[m.productId] ?? 2 : undefined;
+      for (let i = 0; i < boxesOf(m.productId); i++) dispatch({ type: "addProduct", product: p, confirmed: true, autoEvery: every, autoTimes: times });
+    }
     dispatch({ type: "attachRx", ids: lineItems.filter(({ p }) => p.rx).map(({ p }) => p.id) });   // receita anexada aqui mesmo
     const added = lineItems.length - full.length;
     const trocados = lineItems.filter(({ m, p }) => p.id !== m.productId).length;   // #46: equivalente escolhido segue sujeito ao farmacêutico
@@ -69,45 +101,27 @@ export function Refill({ add = false }: { add?: boolean }) {
     <div className="screen">
       <TitleBar title="Meus medicamentos" />
       <div className="scroll">
-        <div className="pad">
-          {/* #19: resumo no topo, loja e aviso de privacidade discreto */}
-          <section className="refill-hero" aria-label="Resumo">
-            <span className="refill-hero-ico"><Icon name="pill" size={26} /></span>
-            <span className="grow">
-              <b>{meds.length} de uso contínuo</b>
-              <small>{dueCount ? `${dueCount} ${dueCount === 1 ? "acaba" : "acabam"} em até ${REFILL_RULES.alertDaysBefore} dias` : "Nenhum acabando nos próximos dias"}</small>
-            </span>
-          </section>
-          <button className="row loc-row" onClick={() => push({ name: "stores" })}>
-            <Icon name="store" size={20} />
-            <span className="grow">{store ? <>Retirar na <b>{store.name}</b> · {store.neighborhood}</> : "Escolher loja de retirada"}</span>
-            <span className="link plain">Trocar</span>
+        <div className="pad refill-pad">
+          {/* #39: topo enxuto: resumo numa linha, loja e privacidade numa linha só */}
+          <div className="refill-top">
+            <span className="grow"><b>{allMeds.length} {allMeds.length === 1 ? "item" : "itens"}</b>{dueCount ? <span className="refill-due"> · {dueCount} {dueCount === 1 ? "acabando" : "acabando"}</span> : null}</span>
+          </div>
+          <button className="row loc-row slim" onClick={() => push({ name: "stores" })}>
+            <Icon name="store" size={18} />
+            <span className="grow">{store ? <>Retirar na <b>{store.name}</b></> : "Escolher loja de retirada"}</span>
+            <span className="btn-sm as-span">Trocar</span>
           </button>
-          <p className="privacy-line"><Icon name="lock" size={15} /> Esta lista fica só neste aparelho e não vai para o assistente de compras.</p>
-
-          {/* Experimento: avisos ligados pela pessoa (fluxos 1 a 5) e o "+ Adicionar item" (fluxo 5) */}
-          <section className="rem-list" aria-label="Avisos de reposição">
-            <div className="row" style={{ justifyContent: "space-between" }}>
-              <b>Avisos que você ligou</b>
-              <button className="btn outline blue rem-add" onClick={() => setAdding(true)}><Icon name="plus" size={18} /> Adicionar item</button>
-            </div>
-            {!reminders.length ? (
-              <p className="sheet-text">Nenhum ainda. Ligue um aviso ao terminar uma compra, na página de um produto ou aqui, e a gente avisa 5 dias antes de acabar.</p>
-            ) : reminders.map((r) => {
-              const p = PRODUCT_BY_ID.get(r.productId);
-              if (!p) return null;
-              const left = daysLeftOf(r);
-              return (
-                <div key={r.productId} className="rem-item">
-                  <ProductImage product={p} size={44} />
-                  <span className="grow"><b>{p.name}</b><small>{usageLine(r)}</small><span className="rem-src">entrou pelo fluxo {r.source}</span></span>
-                  <span className={`med-days${left <= WARN_DAYS ? "" : " calm"}`}>{left} dias</span>
-                  <button className="icon-btn" aria-label={`Apagar aviso de ${p.name}`} onClick={() => dispatch({ type: "remRemove", productId: r.productId })}><Icon name="trash" size={18} /></button>
-                </div>
-              );
-            })}
-          </section>
-          {adding ? <AddReminderSheet onClose={() => setAdding(false)} /> : null}
+          {/* #34: filtro com e sem receita */}
+          <div className="seg refill-filter" role="group" aria-label="Filtrar itens">
+            {([["todos", "Todos"], ["rx", "Com receita"], ["livre", "Sem receita"]] as const).map(([k, l]) => (
+              <button key={k} aria-pressed={filter === k} onClick={() => setFilter(k)}>{l}</button>
+            ))}
+          </div>
+          {autoAsk ? (
+            <AutoSheet product={autoAsk.p} every={autoEveryOf(autoAsk.m, autoAsk.p)} current={refillAutoTimes[autoAsk.m.productId]}
+              onClose={() => setAutoAsk(null)}
+              onConfirm={(times) => { dispatch({ type: "setRefillAuto", id: autoAsk.m.productId, on: true, times }); setAutoAsk(null); }} />
+          ) : null}
 
           {data.loading && !data.data ? <div className="skeleton" style={{ height: 220 }} /> : null}
           {data.error ? <div className="note danger" role="alert"><Icon name="alert" size={18} /><p>{data.error}</p></div> : null}
@@ -115,14 +129,20 @@ export function Refill({ add = false }: { add?: boolean }) {
           {data.data
             ? meds.map((m) => (
                 <MedCard key={m.productId} m={m} product={data.data!.byId.get(m.productId)} avail={data.data!.avail} storeId={storeId}
-                  picked={!!picked[m.productId]} onPick={(v) => setPicked({ ...picked, [m.productId]: v })}
-                  auto={!!refillAuto[m.productId]} onAuto={(on) => dispatch({ type: "setRefillAuto", id: m.productId, on })}
+                  picked={isPicked(m)} onPick={(v) => setPicked({ ...picked, [m.productId]: v })}
+                  auto={autoOn(m)} autoTimes={refillAutoTimes[m.productId]} autoEvery={data.data!.byId.get(m.productId) ? autoEveryOf(m, data.data!.byId.get(m.productId)!) : 30}
+                  onAuto={(on) => { const p = data.data!.byId.get(m.productId); if (on && p) setAutoAsk({ m, p }); else dispatch({ type: "setRefillAuto", id: m.productId, on: false }); }}
+                  onEditAuto={() => { const p = data.data!.byId.get(m.productId); if (p) setAutoAsk({ m, p }); }}
+                  boxes={boxesOf(m.productId)} onBoxes={(n) => setQty({ ...qty, [m.productId]: n })}
+                  onRemove={() => dispatch(m.userAdded ? { type: "remRemove", productId: m.productId } : { type: "refillHide", productId: m.productId, on: true })}
                   reminders={consent.refillReminders}
                   choice={choice[m.productId]} onChoice={(c) => pick(m.productId, c)} onReset={() => pick(m.productId, null)} />
               ))
             : null}
+          {data.data && !meds.length ? <p className="sheet-text">{filter === "todos" ? "Nenhum item na Hora de repor. Toque em Adicionar." : `Nenhum item ${filter === "rx" ? "com" : "sem"} receita na sua lista.`}</p> : null}
+          <p className="privacy-line"><Icon name="lock" size={14} /> Esta lista fica só neste aparelho e não vai para o assistente de compras.</p>
 
-          <section className="panel" aria-label="Receita">
+          {needsRx || allMeds.some(isRx) ? <section className="panel" aria-label="Receita">
             <div className="row"><Icon name="receipt" size={22} /><b>Receita (simulada)</b></div>
             {rxAttached ? (
               <p className="ok-line"><Icon name="checkCircle" size={18} /> Receita simulada anexada · válida até 30/03/2027 (data fictícia)</p>
@@ -132,13 +152,13 @@ export function Refill({ add = false }: { add?: boolean }) {
             <button className={`btn ${rxAttached ? "outline" : "primary"} block`} onClick={() => dispatch({ type: "setRx", on: !rxAttached })}>
               {rxAttached ? "Remover receita simulada" : "Anexar receita simulada"}
             </button>
-          </section>
+          </section> : null}
 
           {lineItems.length ? (
             <section className="panel" aria-label="Total com entrega">
               <b>Total com entrega</b>
               <small style={{ color: "var(--text-2)" }}>
-                {lineItems.length} {lineItems.length === 1 ? "item" : "itens"} · {money(itemsCents)}
+                {boxesTotal} {boxesTotal === 1 ? "caixa" : "caixas"} · {money(itemsCents)}
               </small>
               <table className="quote">
                 <tbody>
@@ -160,17 +180,17 @@ export function Refill({ add = false }: { add?: boolean }) {
       </div>
       <div className="summary">
         <small className="foot center" role="status">
-          {!marked.length ? "Marque o que quer repor." : !rxAttached ? "Para repor remédio com receita, anexe a receita (simulada)." : !lineItems.length ? "Escolha um equivalente em estoque para seguir."
-            : `${lineItems.length} ${lineItems.length === 1 ? "item" : "itens"} · ${money(itemsCents)}${unavailable.length ? ` · fora da conta, sem estoque nesta loja: ${unavailable.map((m) => m.label.replace(/\s*\(uso contínuo\)/i, "")).join(", ")}` : ""}`}
+          {!marked.length ? "Marque o que quer repor." : needsRx && !rxAttached ? "Para repor remédio com receita, anexe a receita (simulada)." : !lineItems.length ? "Escolha um equivalente em estoque para seguir."
+            : `${boxesTotal} ${boxesTotal === 1 ? "caixa" : "caixas"} · ${money(itemsCents)}${unavailable.length ? ` · fora da conta, sem estoque nesta loja: ${unavailable.map((m) => m.label.replace(/\s*\(uso contínuo\)/i, "")).join(", ")}` : ""}`}
         </small>
         {/* #19: falta a receita? o botão principal vira a ação que falta, em vez de ficar apagado */}
-        {marked.length && !rxAttached ? (
+        {needsRx && !rxAttached ? (
           <button className="btn primary block" onClick={() => dispatch({ type: "setRx", on: true })}>
             <Icon name="receipt" size={22} /> Anexar receita simulada
           </button>
         ) : (
           <button className="btn primary block" disabled={!canBuy} onClick={buy}>
-            <Icon name="basketPlus" size={22} /> {lineItems.length ? `Repor ${lineItems.length} ${lineItems.length === 1 ? "item" : "itens"} na cesta` : "Repor na cesta"}
+            <Icon name="basketPlus" size={22} /> {lineItems.length ? `Repor ${boxesTotal} ${boxesTotal === 1 ? "caixa" : "caixas"} na cesta` : "Repor na cesta"}
           </button>
         )}
       </div>
@@ -178,102 +198,117 @@ export function Refill({ add = false }: { add?: boolean }) {
   );
 }
 
-function MedCard({ m, product, avail, storeId, picked, onPick, auto, onAuto, reminders, choice, onChoice, onReset }: {
+/** #44: antes de ligar a reposição automática, a pessoa escolhe quantas entregas quer (nunca fica sem fim). */
+function AutoSheet({ product, every, current, onConfirm, onClose }: { product: Product; every: number; current?: number; onConfirm: (times: number) => void; onClose: () => void }) {
+  const [times, setTimes] = useState<number | null>(current ?? null);
+  const last = (n: number) => new Date(Date.now() + (n - 1) * every * 86_400_000).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+  return (
+    <BottomSheet title="Repor automaticamente" onClose={onClose}>
+      <div className="auto-prod"><ProductImage product={product} size={44} /><span className="grow"><b>{product.name}</b><small>1 caixa a cada {every} dias</small></span></div>
+      <span className="section-title">Quantas entregas você quer?</span>
+      <div className="auto-opts" role="radiogroup" aria-label="Quantas entregas">
+        {[2, 3, 6, 12].map((n) => (
+          <button key={n} role="radio" aria-checked={times === n} className={`auto-opt${times === n ? " on" : ""}`} onClick={() => setTimes(n)}>
+            <b>{n} entregas</b><small>cerca de {Math.round((n * every) / 30)} {Math.round((n * every) / 30) === 1 ? "mês" : "meses"}</small><small>última em {last(n)}</small>
+          </button>
+        ))}
+      </div>
+      <p className="auto-note"><Icon name="info" size={16} /> Esta compra conta como a 1ª entrega. Avisamos 5 dias antes de cada uma; dá para pular ou cancelar quando quiser em Mais &gt; Assinaturas. Depois da última, a reposição para sozinha e perguntamos se quer continuar.</p>
+      <button className="btn primary block" disabled={!times} onClick={() => times && onConfirm(times)}>{times ? `Ligar por ${times} entregas` : "Escolha quantas entregas"}</button>
+    </BottomSheet>
+  );
+}
+
+function MedCard({ m, product, avail, storeId, picked, onPick, auto, autoTimes, autoEvery, onAuto, onEditAuto, reminders, choice, onChoice, onReset, boxes, onBoxes, onRemove }: {
   m: ContinuousMedication; product: Product | undefined; avail: StoreAvailability[]; storeId: string | null; picked: boolean; onPick: (v: boolean) => void;
-  auto: boolean; onAuto: (on: boolean) => void; reminders: boolean; choice?: Product;
-  onChoice: (c: Product) => void; onReset: () => void;
+  auto: boolean; autoTimes?: number; autoEvery: number; onAuto: (on: boolean) => void; onEditAuto: () => void; reminders: boolean; choice?: Product;
+  onChoice: (c: Product) => void; onReset: () => void; boxes: number; onBoxes: (n: number) => void; onRemove: () => void;
 }) {
   const { search } = useServices();
   const { dispatch } = useApp();
   const left = daysLeft(m);
-  const urgent = needsRefill(m);
+  const urgent = needsRefill(m) && reminders;
   const pct = Math.max(4, Math.min(100, Math.round((m.unitsLeft / m.packUnits) * 100)));
   const here = storeId ? avail.find((a) => a.store.id === storeId) : null;
   const inStockHere = storeId ? !!here?.availableIds.includes(m.productId) : (product?.stockQty ?? 0) > 0;
   const nearest = avail.find((a) => a.availableIds.includes(m.productId) && a.store.id !== storeId);
-  const sims = useAsync<SimilarsResponse | null>(() => (inStockHere ? Promise.resolve(null) : search.similars(m.productId, storeId)), [search, m.productId, storeId, inStockHere]);
-  const cur = choice ?? product;     // escolhido um equivalente, ele passa a ser o item deste cartão
+  const [showEquiv, setShowEquiv] = useState(false);
+  const sims = useAsync<SimilarsResponse | null>(() => (inStockHere || !showEquiv ? Promise.resolve(null) : search.similars(m.productId, storeId)), [search, m.productId, storeId, inStockHere, showEquiv]);
+  const cur = choice ?? product;
   const swapped = !!product && !!choice && choice.id !== product.id;
-  // escolher ou desfazer troca o conteúdo do cartão: o foco vai para o cartão (o botão tocado some) e a troca é anunciada
   const cardRef = useRef<HTMLElement>(null);
   const [said, setSaid] = useState("");
-  const focusCard = () => setTimeout(() => cardRef.current?.focus(), 0);   // depois do render que tirou o botão
+  const focusCard = () => setTimeout(() => cardRef.current?.focus(), 0);
   if (!product || !cur) return null;
-  const choose = (p: Product) => { onChoice(p); onPick(true); setSaid(`${p.name} escolhido no lugar de ${product.name}.`); focusCard(); };
+  const rx = !!product.rx;
+  const choose = (p: Product) => { onChoice(p); onPick(true); setShowEquiv(false); setSaid(`${p.name} escolhido no lugar de ${product.name}.`); focusCard(); };
   const undo = () => { onReset(); setSaid(`Troca desfeita. Voltou ${product.name}.`); focusCard(); };
-  const out = new Date(runOutDate(m)).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+  const out = new Date(runOutDate(m));
+  const ok = inStockHere || swapped;
+  const lastAuto = autoTimes ? new Date(Date.now() + (autoTimes - 1) * autoEvery * 86_400_000).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : null;
 
+  // #45: cabeçalho (marcar, etiquetas, remover) / corpo (foto, nome, data) / rodapé (preço, caixas) / opções, com espaçamento único de 12 px
   return (
-    <article ref={cardRef} tabIndex={-1} className={`panel med ${urgent && reminders ? "urgent" : ""}`} aria-label={m.label}>
-      <div className="med-top">
+    <article ref={cardRef} tabIndex={-1} className={`rc${rx ? " rx" : ""}${urgent ? " urgent" : ""}${picked ? " sel" : ""}`} aria-label={`${m.label}: ${cur.name}`}>
+      <header className="rc-head">
+        <label className="rc-check"><input type="checkbox" checked={picked} onChange={(e) => onPick(e.target.checked)} aria-label={`Incluir ${cur.name} na reposição`} /></label>
         <span className="med-tag">{m.label.replace(/\s*\(uso contínuo\)/i, "")}</span>
-        {urgent && reminders ? <span className="med-days"><Icon name="bell" size={13} /> Acaba em {left} {left === 1 ? "dia" : "dias"}</span> : <span className="med-days calm">{left} dias</span>}
-      </div>
-      <label className="med-head">
-        <input type="checkbox" checked={picked} onChange={(e) => onPick(e.target.checked)} aria-label={`Incluir ${cur.name} na reposição`} />
-        <span className="med-photo"><ProductImage product={cur} size={64} /></span>
-        <span className="grow">
-          <b>{cur.name}</b>
-          {swapped ? <small className="swap-note">no lugar de {product.name}</small> : <small>{cur.brand}</small>}
-          {swapped || inStockHere ? <span className="price blue">{money(cur.priceCents)}</span> : null}
-        </span>
-      </label>
-      <div className="med-stock">
-        <div className="meter" role="img" aria-label={`Restam ${m.unitsLeft} de ${m.packUnits} unidades, cerca de ${left} dias`}>
-          <div className="fill" style={{ width: `${pct}%` }} />
+        {rx ? <span className="rx-tag"><Icon name="receipt" size={12} /> Receita</span> : null}
+        <button className="icon-btn rc-remove" aria-label={`Remover ${cur.name} da Hora de repor`} onClick={onRemove}><Icon name="trash" size={18} /></button>
+      </header>
+      <div className="rc-body">
+        <span className="rc-photo" title={`Restam ${m.unitsLeft}${m.unit === "dias" ? " dias" : ""} de ${m.packUnits} (${pct}%)`}><ProductImage product={cur} size={72} /></span>
+        <div className="rc-info">
+          <b className="rc-name">{cur.name}</b>
+          {swapped ? <small className="swap-note">no lugar de {product.name} · {delta(cur.priceCents - product.priceCents)}</small> : null}
+          <DateChip date={out} days={left} compact sub="" />
         </div>
-        <small>Restam <b>{m.unitsLeft} de {m.packUnits}</b> · acaba por volta de {out}</small>
+      </div>
+      <div className="rc-foot">
+        {ok ? <span className="price blue">{money(cur.priceCents)}</span> : <span className="rc-out">Sem estoque</span>}
+        <Stepper value={boxes} max={rx ? RX_MAX_QTY : 6} onChange={onBoxes} label={`caixas de ${cur.name}`} />
       </div>
 
-      {inStockHere || swapped ? (
-        <div className="stock-pill ok"><Icon name="store" size={16} /><span>Em estoque{here ? ` na ${here.store.name}` : ""}</span></div>
-      ) : (
-        /* #30: falta de estoque em alerta, com saída: retirar em outra loja ou aviso de que nenhuma próxima tem */
-        <div className="stock-alert" role="alert">
-          <Icon name="alert" size={20} />
-          <span className="grow">
-            <b>Sem estoque{here ? ` na ${here.store.name}` : ""}</b>
-            <small>{nearest ? `Tem na ${nearest.store.name}, a ${nearest.distanceKm.toLocaleString("pt-BR")} km. Ou escolha um equivalente abaixo.` : "Sem estoque nas farmácias próximas. Escolha um equivalente abaixo."}</small>
-          </span>
-          {nearest ? (
-            <button className="btn outline blue stock-alert-btn" onClick={() => dispatch({ type: "setStore", store: nearest.store })}>Retirar na {nearest.store.name}</button>
-          ) : null}
+      {!ok ? (
+        <div className="rc-alert" role="alert">
+          <p><Icon name="alert" size={16} /> Sem estoque{here ? ` na ${here.store.name}` : ""}{nearest ? `. Tem na ${nearest.store.name}, a ${nearest.distanceKm.toLocaleString("pt-BR")} km.` : " nas farmácias próximas."}</p>
+          <div className="rc-alert-actions">
+            {nearest ? <button className="btn-sm" onClick={() => dispatch({ type: "setStore", store: nearest.store })}><Icon name="store" size={15} /> Retirar lá</button> : null}
+            <button className="btn-sm" onClick={() => setShowEquiv(!showEquiv)} aria-expanded={showEquiv}><Icon name={showEquiv ? "chevronUp" : "swap"} size={15} /> {showEquiv ? "Fechar" : "Equivalentes"}</button>
+          </div>
         </div>
-      )}
-
-      <p className="sr-only" role="status">{said}</p>
-      {swapped || inStockHere ? (
-        <div className="med-price">
-          {swapped ? <small className="swap-note">{delta(cur.priceCents - product.priceCents)} em relação ao original · sujeito à confirmação do farmacêutico</small> : null}
-          {swapped ? <button className="btn outline block undo-swap" onClick={undo}><Icon name="repeat" size={18} /> Voltar ao original</button> : null}
-        </div>
-      ) : (
+      ) : null}
+      {showEquiv && !ok ? (
         <div className="equiv" aria-label="Equivalentes disponíveis">
-          <b>Equivalentes com estoque</b>
-          <small className="foot">Mesmo princípio ativo e mesma dose. Critério deste protótipo, pelo cadastro. A troca é uma sugestão: só vale depois que o farmacêutico confirmar, e na loja ele segue a lista de intercambiáveis da Anvisa (Lei 9.787/1999 e RDC 58/2014). Aqui ninguém confirma de verdade.</small>
-          {sims.loading ? <div className="skeleton" style={{ height: 60 }} /> : null}
-          {(sims.data?.options ?? []).filter((o) => o.inStock && o.sameDose !== false).map((o) => (   // só os de mesmo princípio ativo e mesma dose
+          <small className="foot">Mesmo princípio ativo e mesma dose. A troca só vale depois que o farmacêutico confirmar (simulado).</small>
+          {sims.loading ? <div className="skeleton" style={{ height: 48 }} /> : null}
+          {(sims.data?.options ?? []).filter((o) => o.inStock && o.sameDose !== false).map((o) => (
             <div key={o.product.id} className="swap-opt">
-              <ProductImage product={o.product} size={44} />
-              <span className="grow">
-                <b>{o.product.name}</b>
-                <small>{PRES[o.presentation ?? "similar"]} · {money(o.product.priceCents)} ({delta(o.deltaCents)}){o.needsPharmacistConfirmation ? " · sujeito à confirmação do farmacêutico" : ""}</small>
-              </span>
-              <button className="btn outline blue" aria-label={`Escolher ${o.product.name}`} onClick={() => choose(o.product)}>Escolher</button>
+              <ProductImage product={o.product} size={40} />
+              <span className="grow"><b>{o.product.name}</b><small>{PRES[o.presentation ?? "similar"]} · {money(o.product.priceCents)} ({delta(o.deltaCents)})</small></span>
+              <button className="btn-sm" aria-label={`Escolher ${o.product.name}`} onClick={() => choose(o.product)}>Escolher</button>
             </div>
           ))}
           {sims.data && !sims.data.options.some((o) => o.inStock) ? <p className="off">Nenhum equivalente em estoque nesta loja.</p> : null}
         </div>
-      )}
+      ) : null}
+      {swapped ? <button className="btn-sm undo" onClick={undo}><Icon name="repeat" size={14} /> Voltar ao original</button> : null}
+      <p className="sr-only" role="status">{said}</p>
 
-      {/* #19: chave liga/desliga com texto curto */}
-      <label className="toggle-row">
-        <span className="grow">
-          <b>Repor automaticamente</b>
-          <small>{auto ? `Avisamos ${REFILL_RULES.alertDaysBefore} dias antes de acabar e você confirma cada compra.` : "Remédio não tem frete grátis nem desconto."}</small>
-        </span>
-        <input type="checkbox" role="switch" className="toggle" checked={auto} onChange={(e) => onAuto(e.target.checked)} />
-      </label>
+      {canAuto(product) ? (
+        <div className="rc-opt">
+          <label className="rc-opt-row">
+            <span className="grow">
+              <b>Repor automaticamente</b>
+              <small>{auto && autoTimes ? `${autoTimes} entregas · 1 a cada ${autoEvery} dias · última em ${lastAuto}` : "Aviso 5 dias antes, na véspera e no dia"}</small>
+            </span>
+            <input type="checkbox" role="switch" className="toggle sm" checked={auto} onChange={(e) => onAuto(e.target.checked)} aria-label="Repor automaticamente" />
+          </label>
+          {auto ? <button className="btn-sm" onClick={onEditAuto}>Alterar entregas</button> : null}
+        </div>
+      ) : (
+        <div className="rc-opt rx-note"><Icon name="bell" size={15} /><span>Com receita, a reposição é manual. Aviso 5 dias antes, na véspera e no dia.</span></div>
+      )}
     </article>
   );
 }

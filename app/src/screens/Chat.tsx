@@ -270,7 +270,7 @@ function SwapBlock({ res, action, onSend }: { res: SearchResponse; action: Extra
           </div>
         );
       })}
-      <button className="link plain" onClick={() => onSend("mais barato")}>Ver o kit inteiro mais barato</button>
+      <button className="btn-sm" onClick={() => onSend("mais barato")}><Icon name="tag" size={16} /> Ver o kit inteiro mais barato</button>
     </section>
   );
 }

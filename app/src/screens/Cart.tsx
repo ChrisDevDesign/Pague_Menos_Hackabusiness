@@ -106,7 +106,7 @@ export function Cart() {
         <button className="btn primary block" onClick={() => push(rxNeeded ? { name: "prescriptions" } : { name: "delivery" })}>
           {rxNeeded ? "Confirmar cesta e anexar receitas" : "Seguir para entrega"}
         </button>
-        <button className="link" style={{ alignSelf: "center", minHeight: 40 }} onClick={() => resetTo("home")}>Continuar comprando</button>
+        <button className="btn outline block" onClick={() => resetTo("home")}>Continuar comprando</button>
       </div>
     </div>
   );

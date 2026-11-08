@@ -179,7 +179,7 @@ function KitZone({ res, storeName, onPatch, onOpen, onStores }: {
       <button className="row" style={{ fontSize: 13.5, color: "var(--text-2)", textAlign: "left", minHeight: 36 }} onClick={onStores}>
         <Icon name="store" size={18} />
         <span className="grow">{storeName ? `Só com o estoque da ${storeName}` : "Estoque para entrega em casa"}</span>
-        <span className="link plain" style={{ fontSize: 13.5 }}>{storeName ? "Trocar loja" : "Retirar na loja"}</span>
+        <span className="btn-sm as-span">{storeName ? "Trocar loja" : "Retirar na loja"}</span>
       </button>
 
       {res.safety.decision === "caution" && res.safety.message ? (

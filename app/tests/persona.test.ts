@@ -22,7 +22,7 @@ describe("persona (Renata) e reposição", () => {
     expect(needsRefill(a)).toBe(true);
     expect(needsRefill(b)).toBe(true);
     expect(needsRefill({ ...a, unitsLeft: 20 })).toBe(false);
-    expect(REFILL_RULES.alertDaysBefore).toBe(7);
+    expect(REFILL_RULES.alertDaysBefore).toBe(5);   // #34 (08/11): o primeiro aviso sai 5 dias antes
   });
 
   it("desconto da reposição automática só quando ligada", () => {

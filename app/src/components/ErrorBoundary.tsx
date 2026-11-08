@@ -18,7 +18,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { failed: 
           <h2 style={{ fontSize: 20 }}>Algo deu errado nesta tela</h2>
           <p style={{ color: "var(--text-2)", lineHeight: 1.5 }}>Pode ser um dado antigo guardado neste aparelho. Limpar a cesta e os pedidos da demonstração costuma resolver.</p>
           <button className="btn primary block" onClick={() => { clearSession(); window.location.reload(); }}>Limpar a cesta e recarregar</button>
-          <button className="link" onClick={() => window.location.reload()}>Só recarregar</button>
+          <button className="btn outline block" onClick={() => window.location.reload()}>Só recarregar</button>
         </div>
       </div>
     );

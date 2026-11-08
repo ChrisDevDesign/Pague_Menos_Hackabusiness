@@ -11,7 +11,12 @@ export interface Subscription {
   id: string;
   kit: Kit;
   intent: Intent;
-  everyDays: SubEvery;
+  /** 30 ou 60 nos kits; na reposição automática, quanto uma caixa dura (#35). */
+  everyDays: number;
+  /** "reposicao" = um produto com reposição automática (Hora de repor); sem campo = kit. */
+  kind?: "reposicao";
+  /** #44: entregas que ainda faltam; quando chega a 0, a assinatura acaba sozinha. Ausente = até cancelar (kits). */
+  deliveriesLeft?: number;
   /** Data do próximo envio (ISO). */
   nextAt: string;
   status: SubStatus;
@@ -27,12 +32,12 @@ export const DAY_MS = 86_400_000;
 const addDays = (iso: string, days: number) => new Date(Date.parse(iso) + days * DAY_MS).toISOString();
 
 /** Assinatura nova a partir de uma linha de kit assinada no pedido. */
-export function newSubscription(p: { id: string; kit: Kit; intent: Intent; everyDays: SubEvery; createdAt: string; storeName: string | null }): Subscription {
+export function newSubscription(p: { id: string; kit: Kit; intent: Intent; everyDays: number; createdAt: string; storeName: string | null }): Subscription {
   return { ...p, nextAt: addDays(p.createdAt, p.everyDays), status: "ativa", skips: 0 };
 }
 
 /** Muda a frequência (ex.: adiar de 30 para 60 dias). O próximo envio passa a contar a partir do último. */
-export function changeEvery(s: Subscription, every: SubEvery): Subscription {
+export function changeEvery(s: Subscription, every: number): Subscription {
   if (every === s.everyDays) return s;
   return { ...s, everyDays: every, nextAt: addDays(s.nextAt, every - s.everyDays) };
 }
@@ -70,6 +75,19 @@ export function removeItem(s: Subscription, productId: string): Subscription | n
 /** Troca o kit inteiro (depois de trocar um item pelo motor de busca). */
 export function replaceKit(s: Subscription, kit: Kit): Subscription {
   return { ...s, kit };
+}
+
+/** #35: reposição automática de um produto vira assinatura de 1 item (dá para pausar e cancelar como os kits). */
+export function productSubscription(p: { id: string; product: Product; qty: number; everyDays: number; createdAt: string; storeName: string | null; deliveriesLeft?: number }): Subscription {
+  const base: Kit = {
+    id: `k_rep_${p.product.id}`, tier: "essencial", title: p.product.name, goal: "suplementos", items: [],
+    itemsTotalCents: 0, discountPct: 0, discountCents: 0, totalCents: 0, listTotalCents: 0, withinBudget: true, cashbackCents: 0,
+    storeId: null, alerts: [], rationale: "Reposição automática ligada em Hora de repor.",
+  };
+  const items: KitItem[] = Array.from({ length: Math.max(1, p.qty) }, () => ({ step: p.product.step, product: p.product, reason: "Reposição automática." }));
+  const kit = { ...repriceKit(base, items), discountPct: 0, discountCents: 0, totalCents: items.reduce((t, i) => t + i.product.priceCents, 0) };
+  const intent: Intent = { goals: [], primaryGoal: null, budgetCents: null, skinType: null, preferences: [], storeId: null, missing: [] };
+  return { ...newSubscription({ id: p.id, kit, intent, everyDays: p.everyDays, createdAt: p.createdAt, storeName: p.storeName }), kind: "reposicao", deliveriesLeft: p.deliveriesLeft };
 }
 
 export const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });

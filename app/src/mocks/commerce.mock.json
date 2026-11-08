@@ -169,7 +169,7 @@
  "refill": {
   "freeShipping": false,
   "discountPct": 5,
-  "alertDaysBefore": 7,
+  "alertDaysBefore": 5,
   "note": "Remédio não entra em promoção (RDC 96/2008): a reposição automática não dá frete grátis; o desconto de 5% é premissa fictícia e ainda não vale."
  }
 }

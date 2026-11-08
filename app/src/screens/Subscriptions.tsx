@@ -10,7 +10,7 @@ import type { StepId, SwapOption } from "../contracts/types";
 import { STEP_LABEL } from "../contracts/types";
 import { useNav, useServices } from "../nav";
 import { delta, money } from "../services/format";
-import { changeEvery, fmtDate, removeItem, replaceKit, setPaused, skipNext, type SubEvery, type Subscription } from "../services/subscriptions";
+import { changeEvery, fmtDate, removeItem, replaceKit, setPaused, skipNext, type Subscription } from "../services/subscriptions";
 import { useApp } from "../state/app";
 
 export function Subscriptions() {
@@ -34,8 +34,8 @@ export function Subscriptions() {
             <article key={s.id} className="panel sub-card">
               <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
                 <span className="grow">
-                  <b className="sub-title">Kit {s.kit.title}</b>
-                  <small className="sub-meta">A cada {s.everyDays} dias · {s.kit.items.length} itens</small>
+                  <b className="sub-title">{s.kind === "reposicao" ? `Reposição: ${s.kit.title}` : `Kit ${s.kit.title}`}</b>
+                  <small className="sub-meta">A cada {s.everyDays} dias · {s.deliveriesLeft != null ? `faltam ${s.deliveriesLeft} ${s.deliveriesLeft === 1 ? "entrega" : "entregas"}` : `${s.kit.items.length} itens`}</small>
                 </span>
                 <span className={`mini ${s.status === "ativa" ? "green" : "warn"}`}>{s.status === "ativa" ? "Ativa" : "Pausada"}</span>
               </div>
@@ -78,7 +78,7 @@ export function SubscriptionEdit({ id }: { id: string }) {
   }
 
   const save = (sub: Subscription, toast: string) => dispatch({ type: "subSet", sub, toast });
-  const setEvery = (d: SubEvery) => {
+  const setEvery = (d: number) => {
     if (d === s.everyDays) return;
     const n = changeEvery(s, d);
     save(n, `Agora a cada ${d} dias. Próximo envio em ${fmtDate(n.nextAt)}.`);
@@ -116,7 +116,7 @@ export function SubscriptionEdit({ id }: { id: string }) {
         <div className="pad">
           <section className="panel" style={{ gap: 6 }}>
             <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-              <b className="sub-title grow">Kit {s.kit.title}</b>
+              <b className="sub-title grow">{s.kind === "reposicao" ? `Reposição: ${s.kit.title}` : `Kit ${s.kit.title}`}</b>
               <span className={`mini ${paused ? "warn" : "green"}`}>{paused ? "Pausada" : "Ativa"}</span>
             </div>
             <small className="sub-meta">Assinada em {fmtDate(s.createdAt)}{s.storeName ? ` · ${s.storeName}` : ""}{s.skips ? ` · ${s.skips} ${s.skips === 1 ? "envio pulado" : "envios pulados"}` : ""}</small>
@@ -127,7 +127,7 @@ export function SubscriptionEdit({ id }: { id: string }) {
           <section className="panel" aria-labelledby="sub-freq">
             <span id="sub-freq" className="section-title">Frequência</span>
             <div className="seg" role="group" aria-label="Receber a cada">
-              {([30, 60] as SubEvery[]).map((d) => (
+              {[...new Set([30, 60, s.everyDays])].sort((a, b) => a - b).map((d) => (
                 <button key={d} aria-pressed={s.everyDays === d} onClick={() => setEvery(d)}>A cada {d} dias</button>
               ))}
             </div>
@@ -160,11 +160,11 @@ export function SubscriptionEdit({ id }: { id: string }) {
                   <span className="sub-meta">{it.product.brand} · {money(it.product.priceCents)}</span>
                   {it.product.ownBrand ? <OwnBrandTag small /> : null}
                 </span>
-                <span className="sub-item-actions">
+                {s.kind === "reposicao" ? null : <span className="sub-item-actions">
                   <button className="textbtn" onClick={() => void openSwap(it.step)} aria-label={`Trocar ${it.product.name}`}><Icon name="swap" size={16} /> Trocar</button>
                   <button className="textbtn danger" disabled={s.kit.items.length <= 1} onClick={() => setSheet({ kind: "remove", productId: it.product.id, name: it.product.name })}
                     aria-label={`Tirar ${it.product.name}`}><Icon name="trash" size={16} /> Tirar</button>
-                </span>
+                </span>}
               </div>
             ))}
           </section>

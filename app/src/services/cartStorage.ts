@@ -55,7 +55,7 @@ function cleanLine(l: unknown): CartLine | null {
   const qty = Math.min(Math.floor(l.qty), 9);
   if (l.type === "product") {
     const p = freshProduct(l.product);
-    return p ? { key: l.key, type: "product", product: p, qty: Math.min(qty, p.rx ? RX_MAX_QTY : 9) } : null;
+    return p ? { key: l.key, type: "product", product: p, qty: Math.min(qty, p.rx ? RX_MAX_QTY : 9), ...(isNum(l.autoEvery) && l.autoEvery > 0 && !p.rx ? { autoEvery: l.autoEvery, ...(isNum(l.autoTimes) ? { autoTimes: l.autoTimes } : {}) } : {}) } : null;
   }
   if (l.type === "kit") {
     const kit = cleanKit(l.kit);
@@ -78,7 +78,7 @@ function cleanOrder(o: unknown): Order | null {
 /** Assinatura só entra com kit válido (produtos de hoje), frequência 30/60 e datas legíveis. */
 function cleanSubscription(x: unknown): Subscription | null {
   if (!isObj(x) || !isStr(x.id) || !isStr(x.nextAt) || !isStr(x.createdAt) || Number.isNaN(Date.parse(x.nextAt))) return null;
-  if (!(x.everyDays === 30 || x.everyDays === 60) || !(x.status === "ativa" || x.status === "pausada") || !isObj(x.intent)) return null;
+  if (!(isNum(x.everyDays) && x.everyDays > 0) || !(x.status === "ativa" || x.status === "pausada") || !isObj(x.intent)) return null;
   const kit = cleanKit(x.kit);
   if (!kit) return null;
   return { ...(x as unknown as Subscription), kit, skips: isNum(x.skips) ? x.skips : 0 };

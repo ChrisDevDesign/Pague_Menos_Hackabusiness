@@ -11,6 +11,10 @@ export interface ContinuousMedication {
   packUnits: number;
   /** Rótulo privado, mostrado só na tela "Meus medicamentos". */
   label: string;
+  /** Item que a própria pessoa ligou (Hora de repor), não da lista da persona. */
+  userAdded?: boolean;
+  /** "dias" = produto por ml/g: unitsLeft e packUnits contam dias. */
+  unit?: "un" | "dias";
 }
 
 export interface ConsentFlags {

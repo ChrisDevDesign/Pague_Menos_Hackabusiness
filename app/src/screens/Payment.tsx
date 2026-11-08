@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ReminderOffer } from "../components/Reminders";
+import { ProductImage } from "../components/ProductImage";
+import type { Reminder } from "../services/reminders";
 import { TitleBar } from "../components/Bars";
 import { Icon } from "../components/Icon";
 import { useNav, useServices } from "../nav";
@@ -96,40 +98,66 @@ export function Confirmation({ orderId }: { orderId: string }) {
   const { orders, dispatch, reminderSkipped } = useApp();
   const { replace, resetTo } = useNav();
   const o = orders.find((x) => x.id === orderId);
-  // Experimento, fluxos 2 e 4: itens do pedido que fazem sentido repor; o que já veio em pedido anterior ganha destaque
+  // fluxos 2 e 4: itens do pedido que fazem sentido repor; o que já veio em pedido anterior ganha destaque
   const bought = o ? o.lines.flatMap(lineProducts) : [];
+  const boxes = new Map<string, number>();
+  for (const l of o?.lines ?? []) for (const p of lineProducts(l)) boxes.set(p.id, (boxes.get(p.id) ?? 0) + l.qty);
   const before = new Map<string, string>();
   for (const old of orders) {
     if (!o || old.id === o.id || Date.parse(old.createdAt) >= Date.parse(o.createdAt)) continue;
     for (const p of old.lines.flatMap(lineProducts)) if (!before.has(p.id)) before.set(p.id, new Date(old.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }));
   }
   const skipped = !!o && reminderSkipped.includes(o.id);
+  // #37: item marcado e não ativado liga o aviso ao sair desta tela
+  const pending = useRef<Reminder[]>([]);
+  const leave = (go: () => void) => {
+    if (pending.current.length) dispatch({ type: "remAdd", reminders: pending.current });
+    go();
+  };
+  const where = o ? (o.mode === "retirada" ? `Retirar na ${o.storeName ?? "loja"}` : o.mode === "expressa" ? "Entrega expressa" : "Entrega agendada") : "";
+
   return (
     <div className="screen">
-      <TitleBar title="Pedido realizado" back={false} />
+      <TitleBar title="Pedido confirmado" back={false} />
       <div className="scroll">
-        <div className="pad" style={{ alignItems: "center", textAlign: "center", paddingTop: 32 }}>
-          <span style={{ width: 76, height: 76, borderRadius: "50%", background: "var(--ok-bg)", color: "var(--ok)", display: "grid", placeItems: "center" }}>
-            <Icon name="check" size={40} />
-          </span>
-          <h2 style={{ fontSize: 22 }}>Pedido simulado registrado</h2>
-          {o ? (
-            <p style={{ color: "var(--text-2)", lineHeight: 1.5 }}>
-              Número {o.id} · {money(o.totalCents)}<br />
-              {o.status}
-              {o.cashbackCents ? <><br />{money(o.cashbackCents)} de cashback a receber (simulado)</> : null}
-            </p>
-          ) : null}
-          {o && !skipped ? (
-            <div style={{ width: "100%", textAlign: "left" }}>
-              <ReminderOffer products={bought} source={before.size ? 4 : 2} boughtBefore={before.size ? before : undefined}
-                onSkip={() => dispatch({ type: "remSkip", orderId: o.id })} />
+        <div className="pad confirm-pad">
+          <section className="confirm-hero" aria-live="polite">
+            <span className="confirm-check"><Icon name="check" size={34} /></span>
+            <div>
+              <h2>Pedido confirmado!</h2>
+              {o ? <p>Nº {o.id} · <b>{money(o.totalCents)}</b></p> : null}
             </div>
+            {o ? <span className="mini green confirm-status">{o.status}</span> : null}
+          </section>
+
+          {o && !skipped ? (
+            <ReminderOffer products={bought} source={before.size ? 4 : 2} boughtBefore={before.size ? before : undefined} boxesById={boxes}
+              onPending={(list) => { pending.current = list; }}
+              onSkip={() => { pending.current = []; dispatch({ type: "remSkip", orderId: o.id }); }} />
           ) : null}
-          <div className="note" style={{ textAlign: "left" }}><Icon name="info" size={18} /><p>Demonstração: nada foi cobrado e o pedido não foi enviado a nenhuma loja; ele fica só neste navegador. As frases da busca seguem as regras de Privacidade e dados.</p></div>
-          <button className="btn primary block" onClick={() => replace({ name: "orders" })}>Ver meus pedidos</button>
-          <button className="link" onClick={() => resetTo("home")}>Continuar comprando</button>
+
+          {o ? (
+            <section className="panel confirm-card" aria-label="Resumo do pedido">
+              <div className="confirm-row"><Icon name={o.mode === "retirada" ? "store" : "truck"} size={20} /><span className="grow"><b>{where}</b><small>{o.mode === "retirada" ? "Pronto em até 60 minutos (simulado)" : "Acompanhe em Meus pedidos"}</small></span></div>
+              <div className="confirm-row"><Icon name="wallet" size={20} /><span className="grow"><b>{o.payment}</b>{o.cashbackCents ? <small>{money(o.cashbackCents)} de cashback a receber</small> : <small>Pagamento simulado</small>}</span></div>
+              <span className="section-title">Itens ({o.lines.reduce((t, l) => t + l.qty, 0)})</span>
+              <ul className="confirm-items">
+                {o.lines.map((l) => (
+                  <li key={l.key}>
+                    {l.type === "product" ? <ProductImage product={l.product} size={44} /> : <span className="confirm-kit"><Icon name="sparkle" size={20} /></span>}
+                    <span className="grow"><b>{l.type === "product" ? l.product.name : `Kit ${l.kit.title}`}</b><small>{l.qty}× · {money((l.type === "product" ? l.product.priceCents : l.kit.totalCents) * l.qty)}</small></span>
+                  </li>
+                ))}
+              </ul>
+              <div className="sumrow total"><span>Total</span><b>{money(o.totalCents)}</b></div>
+            </section>
+          ) : null}
+          <p className="footnote">Demonstração: nada foi cobrado e o pedido não foi enviado a nenhuma loja; ele fica só neste navegador.</p>
         </div>
+      </div>
+      <div className="sticky confirm-actions">
+        <button className="btn primary block" onClick={() => leave(() => replace({ name: "orders" }))}>Ver meus pedidos</button>
+        <button className="btn outline block" onClick={() => leave(() => resetTo("home"))}>Continuar comprando</button>
       </div>
     </div>
   );

@@ -15,9 +15,31 @@ Não é um chatbot. É busca por intenção + composição de kit + compra.
 | Documentação (docs 01–16) | escrita e revisada em 21/10; o doc 16 é o prompt e o registro da rodada de medicamentos |
 | Catálogo sintético | 297 produtos (skin care, higiene, suplementos e 108 medicamentos: 100 de busca em 16 áreas + 8 de reposição), 8 lojas, estoque por loja; 83 de 83 checagens |
 | **GraphRAG do zero** | **implementado e treinado**, com medicamentos (grafo de 759 nós, vetores PPMI+SVD, BM25, Naive Bayes de ato de fala 61/65 fora do treino); 173 de 173 testes em 24/10 |
-| App | logado como a persona Renata; busca de remédio e sintoma com kits; reposição; 46 testes; visto só em Chromium |
+| App | logado como a persona Renata; busca de remédio e sintoma com kits; reposição; visto só em Chromium. Em 08/11: 133 testes em 21 arquivos (branch `experimento/hora-de-repor`) |
 
 Limites conhecidos: conjunto de ranking pequeno (14 frases), entidades por regras, premissas de reposição fictícias, nenhuma regra clínica validada, acessibilidade não medida. Detalhes no [doc 14](docs/14-persona-e-privacidade.md) e no [doc 08](docs/08-validacao-e-qualidade.md).
+
+## Experimento: Hora de repor (branch `experimento/hora-de-repor`, 08/11)
+
+Testa como a pessoa coloca um produto na **Hora de repor** sem precisar "cadastrar remédio". Acima do celular há uma barra com **4 quadrados**. Cada um prepara o cenário e abre o app onde aquele fluxo aparece:
+
+| # | Fluxo | Onde aparece |
+| --- | --- | --- |
+| 1 | Página do produto | Link "Avisar quando acabar" embaixo de "Adicionar à cesta"; só marca o item, a pergunta vem no fim da compra |
+| 2 | Pedido confirmado | Depois de pagar, o cartão "Quer ser avisado antes de acabar?" mostra só os itens que fazem sentido repor |
+| 3 | Lembrete depois | Quem tocou "Agora não" vê na Home, uma única vez, "Quer ser avisado antes do próximo acabar?" |
+| 4 | Segunda compra | O item que já veio num pedido anterior aparece primeiro, com "Você já comprou em dd/mm" |
+
+O que a Hora de repor faz nesta branch:
+
+- **Quanto usa:** roleta vertical de 1 a 6 por dia (dedo, roda do mouse ou setas) e quantas caixas comprou. Com 2 caixas o tempo conta as duas, mas a reposição sugere 1.
+- **Quando acaba:** data em formato de calendário, que fica laranja a partir de 5 dias e vermelha na véspera e no dia.
+- **Lista compacta:** sem receita no topo, com receita no fim (borda laranja e selo "Receita"). Cada item tem marcar, − e + de caixas, lixeira e, sem estoque, os botões "Retirar lá" e "Equivalentes". Filtro Todos, Com receita, Sem receita.
+- **Avisos:** com reposição automática, 5 dias antes; sem ela, 5 dias antes, na véspera e no dia.
+- **Reposição automática:** só para produto sem receita. Ao ligar, a pessoa escolhe **2, 3, 6 ou 12 entregas**, vendo a data da última; não existe opção sem fim. A compra vira assinatura de reposição em Mais > Assinaturas, com as entregas que faltam, e dá para pausar, pular ou cancelar.
+- **Privacidade:** a lista fica só no aparelho, o consentimento é o toque em "Ativar", remédio nunca vem pré-marcado e nada disso vai para o motor nem para a LLM.
+
+Na mesma branch: o pedido confirmado e "Meus pedidos" foram redesenhados (fotos dos itens, "Comprar de novo"), e as ações que pareciam texto solto viraram botões em todo o app.
 
 ## Mapa de pastas (módulos separados de propósito)
 

@@ -138,7 +138,7 @@ export function Delivery() {
               </div>
               <div className="row" style={{ justifyContent: "space-between" }}>
                 <span style={{ color: "var(--text-2)" }}>{shown.length} resultados</span>
-                <button className="link" onClick={() => setShowMap((m) => !m)}>{showMap ? "Fechar mapa" : "Abrir mapa"}</button>
+                <button className="btn-sm" onClick={() => setShowMap((m) => !m)} aria-expanded={showMap}><Icon name="map" size={16} /> {showMap ? "Fechar mapa" : "Abrir mapa"}</button>
               </div>
               {showMap ? <MiniMap stores={shown} selected={store?.id ?? null} /> : null}
               {shown.map((s, i) => (

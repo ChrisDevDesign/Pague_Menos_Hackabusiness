@@ -1,3 +1,5 @@
+import { ProductImage } from "../components/ProductImage";
+import { useState } from "react";
 import { PersonaAvatar } from "../components/Avatar";
 import { TitleBar } from "../components/Bars";
 import { Icon, type IconName } from "../components/Icon";
@@ -8,7 +10,7 @@ import { PERSONA } from "../persona";
 import { CATEGORY_PHOTOS, KIT_PROMO_PHOTO, PROFILE_PHOTO, photoCredit, photoUrl } from "../photos";
 import { useNav, useServices, type View } from "../nav";
 import { money } from "../services/format";
-import { useApp } from "../state/app";
+import { lineProducts, useApp, type Order } from "../state/app";
 import { useAsync } from "../useAsync";
 
 const ROWS: Array<{ label: string; icon: IconName; to?: View; off?: string }> = [
@@ -60,7 +62,7 @@ export function Orders() {
     <div className="screen">
       <TitleBar title="Meus pedidos" />
       <div className="scroll">
-        <div className="pad">
+        <div className="pad orders-pad">
           {!orders.length ? (
             <div className="empty">
               <span className="art"><Icon name="box" size={90} strokeWidth={1} /></span>
@@ -68,29 +70,63 @@ export function Orders() {
               <button className="btn primary" onClick={() => resetTo("home")}>Começar a comprar</button>
             </div>
           ) : (
-            orders.map((o) => (
-              <article key={o.id} className="panel" style={{ gap: 6 }}>
-                <div className="row" style={{ justifyContent: "space-between" }}>
-                  <b style={{ fontWeight: 500 }}>Pedido {o.id}</b>
-                  <span className={`mini ${o.status.startsWith("Aguardando avaliação") ? "warn" : "green"}`}>{o.status}</span>
-                </div>
-                <small style={{ color: "var(--text-2)" }}>
-                  {new Date(o.createdAt).toLocaleString("pt-BR")} · {o.mode === "retirada" ? `Retirar na ${o.storeName}` : o.mode === "expressa" ? `Entrega Expressa (${o.storeName})` : "Entrega Agendada"} · {o.payment}
-                </small>
-                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 14, color: "var(--text-2)" }}>
-                  {o.lines.map((l) => (
-                    <li key={l.key}>
-                      {l.qty}× {l.type === "kit" ? `Kit ${l.kit.title} (${l.kit.items.length} ${l.kit.items.length === 1 ? "item" : "itens"})${l.everyDays ? `, assinatura a cada ${l.everyDays} dias` : ""}` : l.product.name}
-                    </li>
-                  ))}
-                </ul>
-                <div className="sumrow total"><span>Total</span><span>{money(o.totalCents)}</span></div>
-              </article>
-            ))
+            orders.map((o) => <OrderCard key={o.id} o={o} />)
           )}
         </div>
       </div>
     </div>
+  );
+}
+
+/** #41: pedido em cartão de app: onde e quando, status, fotos dos itens, total e ações. */
+function OrderCard({ o }: { o: Order }) {
+  const { dispatch } = useApp();
+  const [open, setOpen] = useState(false);
+  const prods = o.lines.flatMap(lineProducts);
+  const count = o.lines.reduce((t, l) => t + l.qty * (l.type === "kit" ? l.kit.items.length : 1), 0);
+  const when = new Date(o.createdAt);
+  const waiting = o.status.startsWith("Aguardando");
+  const again = () => {
+    for (const l of o.lines) {
+      for (let i = 0; i < l.qty; i++) {
+        if (l.type === "kit") dispatch({ type: "addKit", kit: l.kit, intent: l.intent, everyDays: l.everyDays });
+        else dispatch({ type: "addProduct", product: l.product });
+      }
+    }
+  };
+  return (
+    <article className="order-card">
+      <header className="order-head">
+        <span className="order-ico"><Icon name={o.mode === "retirada" ? "store" : "truck"} size={20} /></span>
+        <span className="grow">
+          <b>{o.mode === "retirada" ? `Retirada · ${o.storeName ?? "loja"}` : o.mode === "expressa" ? "Entrega expressa" : "Entrega agendada"}</b>
+          <small>{when.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} às {when.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · Pedido {o.id}</small>
+        </span>
+        <span className={`order-status${waiting ? " warn" : ""}`}>{o.status.replace(" (simulado)", "")}</span>
+      </header>
+      <div className="order-thumbs">
+        {prods.slice(0, 4).map((p, i) => <ProductImage key={p.id + i} product={p} size={56} />)}
+        {prods.length > 4 ? <span className="order-more">+{prods.length - 4}</span> : null}
+      </div>
+      <div className="order-sum">
+        <span>{count} {count === 1 ? "item" : "itens"} · {o.payment}</span>
+        <b>{money(o.totalCents)}</b>
+      </div>
+      {open ? (
+        <ul className="order-lines">
+          {o.lines.map((l) => (
+            <li key={l.key}>
+              <span className="grow">{l.qty}× {l.type === "kit" ? `Kit ${l.kit.title}${l.everyDays ? ` · assinatura a cada ${l.everyDays} dias` : ""}` : l.product.name}{l.type === "product" && l.autoEvery ? " · reposição automática" : ""}</span>
+              <span>{money((l.type === "kit" ? l.kit.totalCents : l.product.priceCents) * l.qty)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <div className="order-actions">
+        <button className="btn outline" onClick={() => setOpen(!open)} aria-expanded={open}>{open ? "Menos detalhes" : "Ver detalhes"}</button>
+        <button className="btn primary" onClick={again}><Icon name="basketPlus" size={18} /> Comprar de novo</button>
+      </div>
+    </article>
   );
 }
 

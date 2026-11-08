@@ -7,7 +7,7 @@ import { RX_MAX_QTY, loadSession, saveSession } from "../services/cartStorage";
 export { RX_MAX_QTY };
 import { readExternalChoice, saveExternalChoice } from "../services/consentStorage";
 import { externalLanguage } from "../services/searchService";
-import { newSubscription, sampleSubscription, type Subscription } from "../services/subscriptions";
+import { newSubscription, productSubscription, sampleSubscription, type Subscription } from "../services/subscriptions";
 import type { Reminder } from "../services/reminders";
 export type { Subscription };
 
@@ -15,7 +15,7 @@ export type SubscriptionDays = 0 | 30 | 60;
 
 export type CartLine =
   | { key: string; type: "kit"; kit: Kit; intent: Intent; qty: number; everyDays: SubscriptionDays }
-  | { key: string; type: "product"; product: Product; qty: number };
+  | { key: string; type: "product"; product: Product; qty: number; /** #35: reposição automática a cada N dias (vira assinatura) */ autoEvery?: number; /** #44: total de entregas escolhido (contando esta) */ autoTimes?: number };
 
 export interface Order {
   id: string;
@@ -50,6 +50,8 @@ interface State {
   chat: { messages: ChatMsg[]; context: ChatContext | null; pending: boolean };
   /** Reposição automática por produto (premissas fictícias). */
   refillAuto: Record<string, boolean>;
+  /** #44: quantas entregas a pessoa escolheu para cada reposição automática. */
+  refillAutoTimes: Record<string, number>;
   /** Equivalente escolhido na reposição, por item; só vale na loja em que foi escolhido (o estoque era dela). */
   refillPick: { storeId: string | null; picks: Record<string, Product> };
   /** Receita SIMULADA anexada nesta sessão (reposição). */
@@ -74,6 +76,8 @@ interface State {
   reminderConsentAt: string | null;
   reminderSkipped: string[];
   reminderNudged: string[];
+  /** #40: remédios da lista da persona que a pessoa tirou da Hora de repor. */
+  refillHidden: string[];
   walletPendingCents: number;
   toast: { text: string; action?: "cart" } | null;
 }
@@ -84,13 +88,13 @@ type Action =
   | { type: "chatPending"; pending: boolean }
   | { type: "chatReset" }
   | { type: "setConsent"; key: keyof ConsentFlags; value: boolean }
-  | { type: "setRefillAuto"; id: string; on: boolean }
+  | { type: "setRefillAuto"; id: string; on: boolean; times?: number }
   | { type: "refillPick"; id: string; product: Product | null; storeId: string | null }
   | { type: "setRx"; on: boolean }
   | { type: "addKit"; kit: Kit; intent: Intent; everyDays?: SubscriptionDays; confirmed?: boolean }
   | { type: "replaceKit"; key: string; kit: Kit; intent: Intent }
   | { type: "setEvery"; key: string; everyDays: SubscriptionDays }
-  | { type: "addProduct"; product: Product; confirmed?: boolean }
+  | { type: "addProduct"; product: Product; confirmed?: boolean; autoEvery?: number; autoTimes?: number }
   | { type: "rxConfirm" }
   | { type: "rxCancel" }
   | { type: "attachRx"; ids: string[] }
@@ -113,6 +117,7 @@ type Action =
   | { type: "remSkip"; orderId: string }
   | { type: "remNudged"; orderId: string }
   | { type: "remDemoReset" }
+  | { type: "refillHide"; productId: string; on: boolean }
   | { type: "clearSession" }
   | { type: "toast"; text: string; action?: "cart" }
   | { type: "hideToast" };
@@ -155,7 +160,8 @@ export function reducer(s: State, a: Action): State {
     case "setConsent":
       return { ...s, consent: { ...s.consent, [a.key]: a.value } };
     case "setRefillAuto":
-      return { ...s, refillAuto: { ...s.refillAuto, [a.id]: a.on }, toast: { text: a.on ? "Reposição automática ativada (simulada)" : "Reposição automática desativada" } };
+      return { ...s, refillAuto: { ...s.refillAuto, [a.id]: a.on }, refillAutoTimes: a.on && a.times ? { ...s.refillAutoTimes, [a.id]: a.times } : s.refillAutoTimes,
+        toast: { text: a.on ? `Reposição automática: ${a.times ?? 2} entregas (simulada)` : "Reposição automática desligada" } };
     case "refillPick": {
       const base = s.refillPick.storeId === a.storeId ? { ...s.refillPick.picks } : {};
       if (a.product) base[a.id] = a.product;
@@ -185,8 +191,8 @@ export function reducer(s: State, a: Action): State {
       const found = s.lines.find((l) => l.key === key);
       if (found && found.qty >= maxQty(found)) return { ...s, toast: { text: `Limite da receita (simulado): até ${RX_MAX_QTY} caixas deste remédio.` } };
       const lines = found
-        ? s.lines.map((l) => (l.key === key ? { ...l, qty: Math.min(maxQty(l), l.qty + 1) } : l))
-        : [...s.lines, { key, type: "product" as const, product: a.product, qty: 1 }];
+        ? s.lines.map((l) => (l.key === key ? { ...l, qty: Math.min(maxQty(l), l.qty + 1), ...(a.autoEvery ? { autoEvery: a.autoEvery, autoTimes: a.autoTimes } : {}) } : l))
+        : [...s.lines, { key, type: "product" as const, product: a.product, qty: 1, ...(a.autoEvery ? { autoEvery: a.autoEvery, autoTimes: a.autoTimes } : {}) }];
       return { ...s, lines, toast: { text: "Produto adicionado à cesta", action: "cart" } };
     }
     case "rxConfirm": {
@@ -240,7 +246,10 @@ export function reducer(s: State, a: Action): State {
           ...(a.order.lines ?? []).flatMap((l) =>
             l.type === "kit" && l.everyDays
               ? [newSubscription({ id: `s_${a.order.id}_${l.key}`, kit: l.kit, intent: l.intent, everyDays: l.everyDays, createdAt: a.order.createdAt, storeName: a.order.storeName })]
-              : []),
+              // #35 e #44: reposição automática comprada vira assinatura com as entregas que faltam (esta é a 1ª)
+              : l.type === "product" && l.autoEvery && !l.product.rx && (l.autoTimes ?? 2) > 1
+                ? [productSubscription({ id: `s_${a.order.id}_${l.key}`, product: l.product, qty: l.qty, everyDays: l.autoEvery, createdAt: a.order.createdAt, storeName: a.order.storeName, deliveriesLeft: (l.autoTimes ?? 2) - 1 })]
+                : []),
           ...s.subscriptions,
         ],
         walletPendingCents: s.walletPendingCents + a.order.cashbackCents,
@@ -263,6 +272,9 @@ export function reducer(s: State, a: Action): State {
       return { ...s, remindIntent: a.on ? [...new Set([...s.remindIntent, a.productId])] : s.remindIntent.filter((x) => x !== a.productId) };
     case "remSkip":
       return { ...s, reminderSkipped: [...new Set([...s.reminderSkipped, a.orderId])] };
+    case "refillHide":
+      return { ...s, refillHidden: a.on ? [...new Set([...s.refillHidden, a.productId])] : s.refillHidden.filter((x) => x !== a.productId),
+        toast: a.on ? { text: "Item tirado da Hora de repor." } : s.toast };
     case "remDemoReset":   // experimento: cada quadrado começa com o histórico de pedidos limpo (os avisos ligados ficam)
       return { ...s, orders: [], reminderSkipped: [], reminderNudged: [] };
     case "remNudged":
@@ -296,6 +308,7 @@ export const initialState: State = {
   consent: PERSONA.privacy.consent,
   chat: { messages: [], context: null, pending: false },
   refillAuto: {},
+  refillAutoTimes: {},
   refillPick: { storeId: null, picks: {} },
   rxAttached: false,
   rxAsk: null,
@@ -313,6 +326,7 @@ export const initialState: State = {
   reminderConsentAt: null,
   reminderSkipped: [],
   reminderNudged: [],
+  refillHidden: [],
   walletPendingCents: 0,
   toast: null,
 };

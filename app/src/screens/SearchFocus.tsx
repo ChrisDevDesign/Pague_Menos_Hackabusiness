@@ -79,7 +79,7 @@ export function SearchFocus({ initial = "", voice: startVoice = false }: { initi
             <section aria-label="Buscas recentes">
               <div className="sec-head">
                 <h2 style={{ fontSize: 19 }}>Buscas recentes</h2>
-                <button className="link plain" onClick={() => dispatch({ type: "clearRecents" })}>Limpar busca</button>
+                <button className="btn-sm" onClick={() => dispatch({ type: "clearRecents" })}><Icon name="trash" size={15} /> Limpar</button>
               </div>
               <ul style={{ listStyle: "none", padding: 0, margin: "8px 0 0" }}>
                 {recents.map((r) => (

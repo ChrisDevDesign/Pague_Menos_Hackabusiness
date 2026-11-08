@@ -1,4 +1,6 @@
 import { PersonaAvatar } from "../components/Avatar";
+import { PRODUCT_BY_ID } from "../services/mock/catalogData";
+import { toMed } from "../services/reminders";
 import { lineProducts } from "../state/app";
 import { ReminderOffer } from "../components/Reminders";
 import { BottomSheet } from "../components/BottomSheet";
@@ -26,15 +28,17 @@ function greeting(): string {
 export function Home() {
   const { push, goTab } = useNav();
   const { commerce } = useServices();
-  const { store, storeId, consent, orders, reminderSkipped, reminderNudged, dispatch } = useApp();
+  const { store, storeId, consent, orders, reminderSkipped, reminderNudged, dispatch, reminders, refillHidden } = useApp();
   const [nudgeOpen, setNudgeOpen] = useState(false);
   const nudgeOrder = orders.find((o) => reminderSkipped.includes(o.id) && !reminderNudged.includes(o.id)) ?? null;
-  const due = PERSONA.continuousMedications.filter((m) => needsRefill(m)).length;
-  const soonest = Math.min(...PERSONA.continuousMedications.map(daysLeft));
+  // #33 e #34: a Hora de repor conta os remédios da persona e os itens que a pessoa ligou; "acabando" = até 5 dias
+  const allMeds = [...PERSONA.continuousMedications.filter((m) => !refillHidden.includes(m.productId)), ...reminders.flatMap((r) => { const p = PRODUCT_BY_ID.get(r.productId); return p ? [toMed(r, p)] : []; })];
+  const due = allMeds.filter((m) => needsRefill(m)).length;
+  const soonest = Math.min(...allMeds.map(daysLeft));
   // quanto ainda resta do remédio que acaba primeiro (barra do cartão de reposição, #17)
-  const first = PERSONA.continuousMedications.reduce((a, b) => (daysLeft(b) < daysLeft(a) ? b : a));
+  const first = allMeds.reduce((a, b) => (daysLeft(b) < daysLeft(a) ? b : a));
   const leftPct = Math.max(6, Math.round((first.unitsLeft / first.packUnits) * 100));
-  const meds = PERSONA.continuousMedications.length;
+  const meds = allMeds.length;
   const home = useAsync(async () => {
     const h = await commerce.home();
     const rows = await Promise.all(
@@ -78,20 +82,20 @@ export function Home() {
           {/* Experimento, fluxo 3: quem tocou "Agora não" no fim do pedido recebe UM lembrete depois */}
           {nudgeOrder ? (
             <section className="rem-nudge" aria-label="Lembrete de reposição">
-              <span className="rem-bell"><Icon name="box" size={20} /></span>
+              <span className="rem-bell big"><Icon name="bell" size={24} /></span>
               <span className="grow">
-                <b>Chegou tudo do pedido {nudgeOrder.id}?</b>
-                <small>Quer ser avisado antes do próximo acabar?</small>
+                <b>Quer ser avisado antes do próximo acabar?</b>
+                <small>Seu pedido {nudgeOrder.id} chegou? Escolha os itens e a gente lembra 5 dias antes.</small>
               </span>
               <span className="rem-nudge-actions">
-                <button className="btn primary" onClick={() => setNudgeOpen(true)}>Ver itens</button>
-                <button className="link plain" onClick={() => dispatch({ type: "remNudged", orderId: nudgeOrder.id })}>Não, obrigado</button>
+                <button className="btn primary" onClick={() => setNudgeOpen(true)}><Icon name="bell" size={18} /> Escolher itens</button>
+                <button className="btn outline" onClick={() => dispatch({ type: "remNudged", orderId: nudgeOrder.id })}>Agora não</button>
               </span>
             </section>
           ) : null}
           {nudgeOpen && nudgeOrder ? (
             <BottomSheet title="Avisar quando acabar" onClose={() => { setNudgeOpen(false); dispatch({ type: "remNudged", orderId: nudgeOrder.id }); }}>
-              <ReminderOffer products={nudgeOrder.lines.flatMap(lineProducts)} source={3} title="Quais destes você quer que a gente avise?" />
+              <ReminderOffer products={nudgeOrder.lines.flatMap(lineProducts)} source={3} title="Quais destes a gente avisa?" />
             </BottomSheet>
           ) : null}
           {/* #29 e #17: Meus medicamentos sempre no topo; vira "Hora de repor" quando algo está acabando.
@@ -101,7 +105,7 @@ export function Home() {
               <span className="refill-ico"><Icon name="bell" size={24} /></span>
               <span className="grow">
                 <b>Hora de repor</b>
-                <small>{due} {due === 1 ? "remédio de uso contínuo acaba" : "remédios de uso contínuo acabam"} em até {REFILL_RULES.alertDaysBefore} dias</small>
+                <small>{due} {due === 1 ? "item que você usa sempre acaba" : "itens que você usa sempre acabam"} em até {REFILL_RULES.alertDaysBefore} dias</small>
                 <span className="refill-meter" aria-hidden="true"><i style={{ width: `${leftPct}%` }} /></span>
                 <small className="refill-when">{soonest === 0 ? "O primeiro acaba hoje" : `O primeiro acaba em ${soonest} ${soonest === 1 ? "dia" : "dias"}`}</small>
               </span>
@@ -120,7 +124,7 @@ export function Home() {
           <section aria-labelledby="h-cat">
             <div className="sec-head">
               <h2 id="h-cat">Categorias</h2>
-              <button className="link plain" onClick={() => push({ name: "categorias" })}>Ver todas</button>
+              <button className="btn-sm" onClick={() => push({ name: "categorias" })}>Ver todas <Icon name="chevron" size={14} /></button>
             </div>
             {/* #16: círculos com foto nas categorias ativas; as de fora do protótipo ficam menores, com "Em breve" */}
             <div className="cat-tiles">

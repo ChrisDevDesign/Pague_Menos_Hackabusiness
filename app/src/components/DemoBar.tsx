@@ -14,7 +14,6 @@ const FLOWS = [
   { n: 2, title: "Pedido confirmado", text: "Depois de pagar: cartão com só os itens que fazem sentido repor." },
   { n: 3, title: "Lembrete depois", text: "Quem tocou \"Agora não\" vê, na Home, \"Chegou tudo?\" uma única vez." },
   { n: 4, title: "Segunda compra", text: "Item que já veio em pedido anterior aparece primeiro, com \"Você já comprou\"." },
-  { n: 5, title: "Cadastro manual", text: "Em Meus medicamentos: \"+ Adicionar item\", busca e as 2 perguntas." },
 ] as const;
 
 let seq = 0;
@@ -46,20 +45,18 @@ export function DemoBar() {
       dispatch({ type: "placeOrder", order: o });
       dispatch({ type: "remSkip", orderId: o.id });   // como se a pessoa tivesse tocado "Agora não" no fim do pedido
       resetAll("home");
-    } else if (n === 4) {
+    } else {
       dispatch({ type: "placeOrder", order: makeOrder(["p107", "p132"], 28, storeName) });   // pedido do mês passado
       const o = makeOrder(ORDER_ITEMS, 0, storeName);
       dispatch({ type: "placeOrder", order: o });
       resetAll("mais", { name: "done", orderId: o.id });
-    } else {
-      resetAll("home", { name: "refill", add: true });
     }
   };
 
   return (
-    <nav className="demo-bar" aria-label="Experimento Hora de repor">
+    <nav className="demo-bar" aria-label="Hora de repor: 4 fluxos">
       <div className="demo-head">
-        <b>Experimento · Hora de repor</b>
+        <b>Hora de repor · 4 jeitos de ligar o aviso</b>
         <span>Toque num quadrado: o app abre onde aquele fluxo aparece. Os avisos ligados ficam em Meus medicamentos.</span>
       </div>
       <div className="demo-tiles">

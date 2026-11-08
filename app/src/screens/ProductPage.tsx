@@ -186,7 +186,7 @@ function Availability({ stores, storeId, storeName, onStores }: {
               : <>Sem estoque nas lojas; só entrega</>}
         </span>
       </div>
-      <button className="link plain" style={{ alignSelf: "flex-start", fontSize: 14, minHeight: 32 }} onClick={onStores}>Ver lojas</button>
+      <button className="btn-sm" style={{ alignSelf: "flex-start" }} onClick={onStores}><Icon name="store" size={16} /> Ver lojas</button>
       <div className="row" style={{ gap: 8, fontSize: 14 }}>
         <Icon name="truck" size={20} /> <span>Entrega Expressa em até 2 h ou Agendada</span>
       </div>

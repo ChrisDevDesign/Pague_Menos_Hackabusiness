@@ -1,10 +1,10 @@
 // Meus medicamentos: REPOSIÇÃO do que a pessoa já usa (lista que fica no aparelho).
 // Os dados (itens, quantidades, receita) ficam no aparelho; o motor só devolve equivalentes a partir de um id de produto.
 import { useMemo, useRef, useState } from "react";
-import { boxDays, canAuto, toMed } from "../services/reminders";
+import { boxDays, canAuto, itemKeyOf, toMed } from "../services/reminders";
 import { PRODUCT_BY_ID } from "../services/mock/catalogData";
 import { Stepper } from "../components/Reminders";
-import { BottomSheet } from "../components/BottomSheet";
+import { AutoSheet } from "../components/AutoSheet";
 import { DateChip } from "../components/DateChip";
 import { TitleBar } from "../components/Bars";
 import { Icon } from "../components/Icon";
@@ -25,11 +25,13 @@ export function Refill(_: { add?: boolean }) {
   const { store, storeId, dispatch, refillAuto, refillAutoTimes, rxAttached, consent, refillPick, lines, reminders, refillHidden } = useApp();
   const [autoAsk, setAutoAsk] = useState<{ m: ContinuousMedication; p: Product } | null>(null);
   // #33: os avisos que a pessoa ligou entram como itens iguais aos remédios da persona
-  const allMeds = useMemo(() => [
-    ...PERSONA.continuousMedications.filter((m) => !refillHidden.includes(m.productId)),
-    ...reminders.filter((r) => !PERSONA.continuousMedications.some((m) => m.productId === r.productId))
-      .flatMap((r) => { const p = PRODUCT_BY_ID.get(r.productId); return p ? [toMed(r, p)] : []; }),
-  ], [reminders, refillHidden]);
+  // #47: um cartão por item (original, cópia Pague Menos e equivalentes contam como o mesmo; vale o aviso mais novo)
+  const allMeds = useMemo(() => {
+    const persona = PERSONA.continuousMedications.filter((m) => !refillHidden.includes(m.productId));
+    const seen = new Set(persona.map((m) => itemKeyOf(m.productId)));
+    const mine = [...reminders].reverse().filter((r) => { const k = itemKeyOf(r.productId); if (seen.has(k)) return false; seen.add(k); return true; }).reverse();
+    return [...persona, ...mine.flatMap((r) => { const p = PRODUCT_BY_ID.get(r.productId); return p ? [toMed(r, p)] : []; })];
+  }, [reminders, refillHidden]);
   const ids = allMeds.map((m) => m.productId);
   const data = useAsync(async () => {
     const [prods, avail, delivery] = await Promise.all([commerce.products(ids), commerce.storesFor(ids), commerce.delivery()]);
@@ -195,27 +197,6 @@ export function Refill(_: { add?: boolean }) {
         )}
       </div>
     </div>
-  );
-}
-
-/** #44: antes de ligar a reposição automática, a pessoa escolhe quantas entregas quer (nunca fica sem fim). */
-function AutoSheet({ product, every, current, onConfirm, onClose }: { product: Product; every: number; current?: number; onConfirm: (times: number) => void; onClose: () => void }) {
-  const [times, setTimes] = useState<number | null>(current ?? null);
-  const last = (n: number) => new Date(Date.now() + (n - 1) * every * 86_400_000).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
-  return (
-    <BottomSheet title="Repor automaticamente" onClose={onClose}>
-      <div className="auto-prod"><ProductImage product={product} size={44} /><span className="grow"><b>{product.name}</b><small>1 caixa a cada {every} dias</small></span></div>
-      <span className="section-title">Quantas entregas você quer?</span>
-      <div className="auto-opts" role="radiogroup" aria-label="Quantas entregas">
-        {[2, 3, 6, 12].map((n) => (
-          <button key={n} role="radio" aria-checked={times === n} className={`auto-opt${times === n ? " on" : ""}`} onClick={() => setTimes(n)}>
-            <b>{n} entregas</b><small>cerca de {Math.round((n * every) / 30)} {Math.round((n * every) / 30) === 1 ? "mês" : "meses"}</small><small>última em {last(n)}</small>
-          </button>
-        ))}
-      </div>
-      <p className="auto-note"><Icon name="info" size={16} /> Esta compra conta como a 1ª entrega. Avisamos 5 dias antes de cada uma; dá para pular ou cancelar quando quiser em Mais &gt; Assinaturas. Depois da última, a reposição para sozinha e perguntamos se quer continuar.</p>
-      <button className="btn primary block" disabled={!times} onClick={() => times && onConfirm(times)}>{times ? `Ligar por ${times} entregas` : "Escolha quantas entregas"}</button>
-    </BottomSheet>
   );
 }
 

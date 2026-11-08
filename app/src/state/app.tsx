@@ -8,7 +8,7 @@ export { RX_MAX_QTY };
 import { readExternalChoice, saveExternalChoice } from "../services/consentStorage";
 import { externalLanguage } from "../services/searchService";
 import { newSubscription, productSubscription, sampleSubscription, type Subscription } from "../services/subscriptions";
-import type { Reminder } from "../services/reminders";
+import { itemKeyOf, type Reminder } from "../services/reminders";
 export type { Subscription };
 
 export type SubscriptionDays = 0 | 30 | 60;
@@ -112,6 +112,8 @@ type Action =
   | { type: "subSet"; sub: Subscription; toast?: string }
   | { type: "subCancel"; id: string }
   | { type: "remAdd"; reminders: Reminder[] }
+  /** #46: reposição automática ligada no pedido confirmado; a compra feita conta como a 1ª entrega. */
+  | { type: "autoStart"; items: Array<{ product: Product; qty: number; everyDays: number; times: number }>; orderId: string; createdAt: string; storeName: string | null }
   | { type: "remRemove"; productId: string }
   | { type: "remIntent"; productId: string; on: boolean }
   | { type: "remSkip"; orderId: string }
@@ -234,8 +236,11 @@ export function reducer(s: State, a: Action): State {
       return { ...s, store: a.store };
     case "setMode":
       return { ...s, mode: a.mode };
-    case "placeOrder":
+    case "placeOrder": {
       if (rxPending(s.lines, s.rxDocs).length) return s;   // #28: pedido com receita faltando é recusado aqui também
+      // #47: comprar de novo com reposição automática troca a reposição antiga do mesmo item, em vez de somar outra
+      const again = new Set((a.order.lines ?? []).flatMap((l) => (l.type === "product" && l.autoEvery ? [itemKeyOf(l.product.id)] : [])));
+      const kept = s.subscriptions.filter((x) => !(x.kind === "reposicao" && x.kit.items[0] && again.has(itemKeyOf(x.kit.items[0].product.id))));
       return {
         ...s,
         lines: [],
@@ -249,21 +254,61 @@ export function reducer(s: State, a: Action): State {
               : l.type === "product" && l.autoEvery && !l.product.rx && (l.autoTimes ?? 2) > 1
                 ? [productSubscription({ id: `s_${a.order.id}_${l.key}`, product: l.product, qty: l.qty, everyDays: l.autoEvery, createdAt: a.order.createdAt, storeName: a.order.storeName, deliveriesLeft: (l.autoTimes ?? 2) - 1 })]
                 : []),
-          ...s.subscriptions,
+          ...kept,
         ],
         walletPendingCents: s.walletPendingCents + a.order.cashbackCents,
       };
+    }
     case "subSet":
       return { ...s, subscriptions: s.subscriptions.map((x) => (x.id === a.sub.id ? a.sub : x)), toast: a.toast ? { text: a.toast } : s.toast };
     case "remAdd": {
+      // #47: o original, a cópia Pague Menos e os equivalentes são o mesmo item: o aviso novo substitui o antigo
+      // (fica o produto comprado por último) e herda a reposição automática que já estava ligada
+      const persona = new Set(PERSONA.continuousMedications.filter((m) => !s.refillHidden.includes(m.productId)).map((m) => itemKeyOf(m.productId)));
+      const fresh = a.reminders.filter((r, i) => !persona.has(itemKeyOf(r.productId))
+        && a.reminders.findIndex((x) => itemKeyOf(x.productId) === itemKeyOf(r.productId)) === i);
+      const keys = new Set(fresh.map((r) => itemKeyOf(r.productId)));
+      const replaced = s.reminders.filter((r) => keys.has(itemKeyOf(r.productId)));
+      const refillAuto = { ...s.refillAuto };
+      const refillAutoTimes = { ...s.refillAutoTimes };
+      for (const old of replaced) {
+        const neu = fresh.find((r) => itemKeyOf(r.productId) === itemKeyOf(old.productId))!;
+        if (old.productId === neu.productId) continue;
+        if (refillAuto[old.productId] && refillAuto[neu.productId] === undefined) {
+          refillAuto[neu.productId] = true;
+          if (refillAutoTimes[old.productId]) refillAutoTimes[neu.productId] = refillAutoTimes[old.productId];
+        }
+        delete refillAuto[old.productId];
+        delete refillAutoTimes[old.productId];
+      }
       const ids = new Set(a.reminders.map((r) => r.productId));
       return {
         ...s,
-        reminders: [...s.reminders.filter((r) => !ids.has(r.productId)), ...a.reminders],
+        reminders: [...s.reminders.filter((r) => !keys.has(itemKeyOf(r.productId))), ...fresh],
+        refillAuto,
+        refillAutoTimes,
         remindIntent: s.remindIntent.filter((id) => !ids.has(id)),
         reminderConsentAt: s.reminderConsentAt ?? new Date().toISOString(),   // o toque em "Ativar" é o consentimento
         toast: { text: a.reminders.length === 1 ? "Aviso ligado. Avisamos 5 dias antes de acabar." : `${a.reminders.length} avisos ligados. Avisamos 5 dias antes de acabar.` },
       };
+    }
+    case "autoStart": {
+      const refillAuto = { ...s.refillAuto };
+      const refillAutoTimes = { ...s.refillAutoTimes };
+      const subs: Subscription[] = [];
+      for (const it of a.items) {
+        if (it.product.rx) continue;
+        refillAuto[it.product.id] = true;
+        refillAutoTimes[it.product.id] = it.times;
+        const id = `s_${a.orderId}_p:${it.product.id}`;
+        if (it.times > 1 && !s.subscriptions.some((x) => x.id === id))
+          subs.push(productSubscription({ id, product: it.product, qty: it.qty, everyDays: it.everyDays, createdAt: a.createdAt, storeName: a.storeName, deliveriesLeft: it.times - 1 }));
+      }
+      const n = a.items.length;
+      const keys = new Set(subs.map((x) => itemKeyOf(x.kit.items[0].product.id)));
+      const kept = s.subscriptions.filter((x) => !(x.kind === "reposicao" && x.kit.items[0] && keys.has(itemKeyOf(x.kit.items[0].product.id))));
+      return { ...s, refillAuto, refillAutoTimes, subscriptions: [...subs, ...kept],
+        toast: { text: n === 1 ? `Reposição automática ligada: ${a.items[0].times} entregas. Veja em Mais > Assinaturas.` : `${n} reposições automáticas ligadas. Veja em Mais > Assinaturas.` } };
     }
     case "remRemove":
       return { ...s, reminders: s.reminders.filter((r) => r.productId !== a.productId), toast: { text: "Aviso desligado e apagado deste aparelho." } };

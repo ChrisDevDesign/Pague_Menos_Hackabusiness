@@ -325,6 +325,7 @@ CONCEPTS: list[Concept] = [
                                           "dor nos olhos", "ouvido entupido", "zumbido no ouvido", "gengiva inchada",
                                           "dente quebrado", "dente doendo",
                                           "labirintite", "tontura", "gota", "acido urico", "osteoporose", "anemia",
+                                          "ressaca", "engov",   # #62: o catálogo não tem remédio para isso
                                           # #65: queixa de circulação, que o catálogo não cobre: "não está no banco", não lista de dor
                                           "pernas inchadas", "perna inchada", "pe inchado", "pes inchados", "inchaco nas pernas", "varizes",
                                           "retencao de liquido", "perna pesada", "pernas pesadas", "ma circulacao", "formigamento"],

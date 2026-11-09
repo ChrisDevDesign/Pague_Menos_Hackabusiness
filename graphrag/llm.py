@@ -21,6 +21,7 @@ from collections import OrderedDict
 from pathlib import Path
 
 from .data import Catalog
+from .shared_cache import SharedCache, fingerprint
 from .lexicon import PREFERENCE_ALIASES
 from .text import norm
 
@@ -158,8 +159,11 @@ class DeepSeek:
 class Reader:
     """Interpreta um pedido com a DeepSeek e devolve só ids que existem no catálogo (ou None)."""
 
-    def __init__(self, cat: Catalog, client, cache_size: int = 512):
+    def __init__(self, cat: Catalog, client, cache_size: int = 512, shared: SharedCache | None = None):
         self.cat, self.client, self.cache_size = cat, client, cache_size
+        # #63: cache compartilhado entre servidores e publicações (desligado sem o Redis da Vercel configurado)
+        self.shared = shared if shared is not None else SharedCache.from_env(
+            fingerprint([p["id"] for p in cat.products], [g["id"] for g in cat.goals]))
         self.cache: OrderedDict[tuple, dict | None] = OrderedDict()
         self.lock = threading.Lock()
         self.allowed = {
@@ -231,12 +235,21 @@ class Reader:
             if key in self.cache:
                 self.cache.move_to_end(key)
                 return self.cache[key]
+        skey = self.shared.key(*key)
+        hit = self.shared.get(skey, unknown)            # #63: alguém já pagou por esta frase? usa a leitura guardada
+        if hit is not None:
+            with self.lock:
+                self.cache[key] = hit
+                if len(self.cache) > self.cache_size:
+                    self.cache.popitem(last=False)
+            return hit
         user = (f"Pedido: {key[0]}" + (f"\nPalavras que o catálogo não conhece: {', '.join(unknown)}" if unknown else "")
                 + (f"\nConversa até aqui: {conversation}" if conversation else ""))
         raw = self.client.complete(self.system, user)
         if raw is None:
             return None                                  # falha da API não vai para o cache: a próxima tenta de novo
         parsed = self._validate(raw, unknown)
+        self.shared.set(skey, parsed, unknown)          # só leitura que veio da API e passou pela validação do catálogo
         with self.lock:
             self.cache[key] = parsed
             if len(self.cache) > self.cache_size:

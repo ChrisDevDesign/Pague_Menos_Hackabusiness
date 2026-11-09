@@ -18,7 +18,7 @@ from . import embed
 from .composer import Composer, build_ctx, list_pt, lower_name
 from .exclusions import excluded as _is_excluded
 from .writer import Writer, facts_of
-from .concepts import MED_MISSING, MED_SHELF
+from .concepts import GENERIC as GENERIC_CONCEPTS, MED_MISSING, MED_SHELF
 from .data import Catalog, load_catalog
 from .lexicon import STATE_WORDS, canon_state
 from .graph import KnowledgeGraph, build_graph
@@ -35,13 +35,38 @@ from .safety import assess, attention, urgency
 # #53: "tenho alergia a X" / "sou alérgica a X"; o que vem depois é testado como exclusão antes de trocar
 _ALLERGY = re.compile(r"(\b(?:tenho |sou |com )?(?:alergi\w*|alergic\w*) (?:a|ao|aos|as|com|de|pela|pelo) )([a-z0-9 -]+)")
 _ALLERGY_STOP = {"e", "mas", "quero", "queria", "preciso", "pra", "para", "me", "entao", "por", "que", "kit", "um", "uma"}
+_VAGUE_SYNONYMS = {"kit", "kits", "rotina"}
+# #62: palavra nova logo depois de uma destas descreve o corpo e pode mudar o pedido ("pele grudenta" = oleosa)
+_BODY_NOUNS = frozenset("pele rosto cara testa nariz queixo cabelo cabelos fios couro unha unhas boca labio labios olho olhos "
+                        "pe pes perna pernas corpo dente dentes gengiva axila axilas barriga costas maos mao".split())   # #62: sozinhos não dizem qual é o objetivo
 _VIT_C = re.compile(r"\bvitamina c\b")
 _SKIN_WORDS = re.compile(r"\b(serum|pele|rosto|cara|mancha\w*|facial|clarear|olheira\w*|suplemento\w*|capsula\w*|comprimido\w*|efervescente|imunidade|gripe)\b")
+# #62: atendimento (o protótipo aponta para a parte do app que resolve; nada disso precisa da DeepSeek)
+_SERVICE = [
+    (re.compile(r"\b(pedido|pedidos|rastre\w*|encomenda|compra (nao|ainda nao) (chegou|veio)|nao (chegou|recebi|veio)|cade (o |meu )?(pedido|produto|compra))\b"),
+     "Seus pedidos ficam em Mais > Meus pedidos, com o status de cada um. Por lá dá para acompanhar, cancelar ou pedir devolução (no protótipo, os pedidos são simulados)."),
+    (re.compile(r"\b(cancel\w*|devolu\w*|devolver|estorno|reembolso)\b"),
+     "Para cancelar ou devolver, abra o pedido em Mais > Meus pedidos (no protótipo, os pedidos são simulados)."),
+    (re.compile(r"\b(nota fiscal|segunda via|nf e|cupom fiscal)\b"),
+     "A nota fiscal fica no detalhe de cada pedido, em Mais > Meus pedidos."),
+    (re.compile(r"\b(horario|que horas (abre|fecha)|abre (que|as)|fecha (que|as)|funcionamento|aberta|aberto (hoje|domingo|feriado)|loja mais proxima|farmacia (mais )?(perto|proxima)|lojas? perto|endereco da loja)\b"),
+     "Em Mais > Lojas e retirada você vê as lojas perto de você, com horário, endereço e o que tem em estoque."),
+    (re.compile(r"\b(pix|boleto|pagar na entrega|pago na entrega|forma de pagamento|formas de pagamento|parcel\w*|aceita cartao|cartao de credito)\b"),
+     "Dá para pagar com Pix, cartão de crédito ou na retirada da loja (pagamento simulado no protótipo)."),
+    (re.compile(r"\b(cupom|cupons|codigo promocional|pontos|programa de pontos|fidelidade|cashback|carteira)\b"),
+     "Cashback, pontos e cupons ficam em Mais > Carteira e cashback."),
+    (re.compile(r"\b(validade da receita|receita vence|vencimento da receita|minhas receitas|receita (valida|vale) (ate|quanto))\b"),
+     "Suas receitas ficam em Meus medicamentos, com a validade de cada uma."),
+    (re.compile(r"\b(atendente|atendimento humano|falar com (uma )?(pessoa|alguem|humano|atendente)|sac|ouvidoria|reclama\w*)\b"),
+     "Para falar com uma pessoa, use o atendimento da Pague Menos pelo app ou pelo telefone da loja. Por aqui eu ajudo a achar produtos e montar kits."),
+    (re.compile(r"\b(entrega(m)? em casa|faz(em)? entrega|voces entregam|tem entrega|frete gratis|frete e gratis|quanto (e|da|fica) o frete)\b"),
+     "Entregamos em casa ou você retira na loja. O frete aparece na cesta antes de pagar, com a opção mais rápida e a mais barata."),
+]
 # #59: presente sem objetivo claro
 _GIFT = re.compile(r"\bpresente(ar|s)?\b|\bpresentear\b|\bde presente\b|\bpra dar (de presente|pra|para)\b")
 from .scope import MAX_LIST, VOTE_REL, Scope, ScopeResolver
 from .slang import FIGURATIVE
-from .spell import COMMON, Speller
+from .spell import COMMON, Speller, _lev_le2
 from .text import STOPWORDS, money, norm, raw_tokens
 
 SKIN_OPTIONS = [{"value": v, "label": l} for v, l in
@@ -263,6 +288,14 @@ class Engine:
             return {**gift, "query": orig_query}
         res = self._search(req, clean, orig_query)
         miss = res.pop("_miss", None)
+        if miss in ("busca", "med_shelf"):
+            # #62: o grafo não entendeu. Pergunta de atendimento tem resposta fixa; frase curta sem nada parecido com o
+            # catálogo ("?", "kkkk", "melatonina") a DeepSeek também não resolveria (ela só devolve itens do catálogo)
+            faq = self._service(req, clean) or self._service(req, orig_query)   # o corretor pode ter mexido ("pontos")
+            if faq:
+                res, miss = {**faq, "query": orig_query}, None
+            elif self._hopeless(clean):
+                miss = None
         # #42: só vai à DeepSeek com allowExternal exatamente true (ou ausente, se o padrão for ligado); 0, "false" e null desligam
         usable = rag and self.rag and req.get("allowExternal", self.external_default) is True
         words: list[str] = []
@@ -276,8 +309,8 @@ class Engine:
             words = self._unknown(clean, fixes)           # o grafo respondeu, mas viu palavra que não conhece: confere
             if conflict:
                 miss = "incerto"                          # deixa a DeepSeek tentar corrigir a prateleira
-            elif words:
-                miss = "fraco"
+            elif words and not self._grounded(clean, res, words):
+                miss = "fraco"                            # #62: palavra nova só chama a API se o grafo não achou nada específico
         if miss and usable:
             if self.quota.allow(req.get("_client")):   # #64: teto por pessoa e por dia; passou, fica a resposta do grafo
                 res = self._rag(req, orig_query, res, miss, words)
@@ -359,6 +392,64 @@ class Engine:
     def _count(self, key: str) -> None:
         with self._stats_lock:
             self.stats[key] += 1
+
+    def _service(self, req: dict, text: str) -> dict | None:
+        """#62: pergunta de atendimento (pedido, entrega, pagamento, loja, receita...): resposta fixa, sem DeepSeek."""
+        nq = norm(text)
+        for pat, reply in _SERVICE:
+            if pat.search(nq):
+                cin = req.get("context") or {}
+                carry = cin.get("intent") or {"goals": [], "primaryGoal": None, "budgetCents": None, "skinType": None,
+                                              "preferences": [], "pregnancy": False, "storeId": req.get("storeId"), "missing": []}
+                return self._basic(req, text, {"decision": "allow"}, carry, cin, int(cin.get("turn", 0)), "atendimento", reply,
+                                   ["Kit de skin care", "Kit de higiene", "Kit de suplementos"])
+        return None
+
+    def _hopeless(self, text: str) -> bool:
+        """#62: termo solto (até 2 palavras) sem nenhuma palavra do catálogo nem parecida com uma (erro de
+        digitação de até 2 letras): nada que a DeepSeek possa ligar ao catálogo. Ex.: "?", "123", "kkkk", "melatonina"."""
+        if len([t for t in raw_tokens(text) if not t.isdigit()]) > 2:   # frase de verdade ("aquele qwrtz pra cara"): confere
+            return False
+        toks = [t for t in raw_tokens(text) if t not in STOPWORDS and t not in COMMON and t not in FILLER]
+        for t in toks:
+            if t.isdigit() or len(t) < 3:
+                continue
+            if t in self.speller.vocab or t in self._med_vocab:
+                return False
+            if len(t) >= 4 and any(abs(len(t) - len(v)) <= 2 and _lev_le2(t, v) <= 2 for v in self.speller.vocab if len(v) >= 4):
+                return False
+        return True
+
+    @property
+    def _med_vocab(self) -> frozenset:
+        """Palavras dos remédios do catálogo (o corretor não as conhece de propósito, por privacidade)."""
+        if not hasattr(self, "_mv"):
+            self._mv = frozenset(t for p in self.cat.products if p["domain"] == "medicamento"
+                                 for t in raw_tokens(p["name"] + " " + p["productType"]) if len(t) >= 4)
+        return self._mv
+
+    def _grounded(self, text: str, res: dict, words: list[str] = ()) -> bool:
+        """#62: o grafo já entendeu algo ESPECÍFICO da frase (queixa, etapa, ingrediente, produto ou prateleira que não é
+        genérica) e respondeu com isso. Aí a palavra desconhecida que sobrou é enfeite ("olheiras fundas", "protetor solar
+        grande", "fralda tamanho g") e a DeepSeek não teria o que acrescentar: o grafo segue sozinho, sem custo.
+        Só "kit", "remédio" ou "dor" soltos não contam: "kit pra quem tem rosácea" continua indo à DeepSeek.
+        Palavra nova que DESCREVE o corpo ("pele grudenta", "corpo todo arrebentado") muda o pedido: essa sempre confere."""
+        toks = raw_tokens(text)
+        for i, t in enumerate(toks):
+            if t in words and any(x in _BODY_NOUNS for x in toks[max(0, i - 2):i]):
+                return False
+        if not (res.get("kits") or res.get("products") or (res.get("scopeInfo") or {}).get("absent")):
+            absent = any(c.absent for c, _ in self.scope.match(text))
+            if not absent:
+                return False
+        u = self.nlu.understand(text)
+        if u.concerns or u.steps or u.requested_ingredients or u.product_ids:
+            return True
+        nt = f" {norm(text)} "
+        for g in [g for g in u.goals if g not in GENERIC_GOALS]:   # objetivo dito com todas as letras ("kit de higiene")
+            if any(f" {norm(s)} " in nt for s in self.cat.goal_by_id[g].get("synonyms", []) if norm(s) not in _VAGUE_SYNONYMS):
+                return True
+        return any(c.id not in GENERIC_CONCEPTS for c, _ in self.scope.match(text))
 
     def _unknown(self, fixed_query: str, fixes: list) -> list[str]:
         """Palavras que fazem o grafo duvidar de si: de conteúdo e desconhecidas do catálogo, ou que o corretor trocou de um

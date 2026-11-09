@@ -238,10 +238,15 @@ class Composer:
             clean = [p for p in base if not self.specialty_mismatch(p, ctx)]
             return clean if len(clean) >= 3 else base
 
+        def own(lst: list[dict]) -> list[dict]:
+            # #60 (= #13 do app): nos kits de dermo e higiene entra a marca própria Pague Menos quando alguma serve
+            mine = [p for p in lst if p.get("ownBrand")]
+            return mine or lst
+
         strict = filt(False)
         if strict:
-            return strict, False
-        return filt(True), True
+            return own(strict), False
+        return own(filt(True)), True
 
     def shortlist(self, lst: list[dict], ctx: Ctx) -> list[dict]:
         top = sorted(lst, key=self._cmp(ctx))[:4]

@@ -23,7 +23,7 @@ NOVO = {
 }
 
 
-_N = max(int(p["id"][1:]) for p in load_catalog().products)
+_N = max(int(p["id"][1:]) for p in load_catalog().products if p["id"][1:].isdigit())   # sem as cópias "pm-" (#60)
 ID1, ID2 = f"p{_N + 1:03d}", f"p{_N + 2:03d}"          # ids que a ingestão vai dar aos dois primeiros produtos novos
 
 
@@ -52,6 +52,8 @@ class TestOntologia(unittest.TestCase):
         e = fresh()
         campos = set(ProductRecord.model_fields)
         for p in e.cat.products:
+            if p.get("ownBrand"):
+                continue                                 # cópia Pague Menos (#60) é derivada, não entra pela ingestão
             ProductRecord.model_validate({k: v for k, v in p.items() if k in campos})
 
     def test_esquema_recusa_registros_incoerentes(self):

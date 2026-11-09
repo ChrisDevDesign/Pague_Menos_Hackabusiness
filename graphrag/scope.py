@@ -25,7 +25,7 @@ from .text import STOPWORDS, norm, raw_tokens, stem, stemmed_all
 POS_ACNE = re.compile(r"marca|mancha|clare|uniform|pos acne|cicatriz|escur")
 VOTE_MIN = 0.28          # nota mínima (0..1, relativa ao melhor possível) do melhor produto para a votação valer
 VOTE_REL = 0.55          # entra na lista da votação quem tem ao menos esta fração da nota do melhor
-MAX_LIST = 24
+MAX_LIST = 48   # #60: cada item pode ter a cópia Pague Menos; o app junta os dois num cartão (#27), então seguem ~24 cartões
 MED_WORDS = ("remedio", "remedios", "medicamento", "medicamentos", "medicacao", "medicacoes", "farmacia",
              "comprimido", "comprimidos", "capsula", "capsulas", "remedio pra", "remedio para")
 

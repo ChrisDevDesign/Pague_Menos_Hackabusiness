@@ -8,6 +8,7 @@ Regras de separação (docs/04, doc 14):
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -87,6 +88,39 @@ class Catalog:
         return self.commerce["freeShippingFromCents"]
 
 
+# ---------------------------------------------------------------------------------------------------------------
+# #60 (auditoria 08/11): marca própria "Pague Menos" também no motor. Mesma regra do app
+# (app/src/services/mock/catalogData.ts, #13): cada item de dermo e higiene ganha uma cópia "pm-<id>", mesma
+# fórmula e embalagem, preço cerca de 15% menor terminando em ,90 e pelo menos 5% de cashback. Os kits de dermo e
+# higiene preferem a cópia (composer.candidates_for); a busca mostra as duas (o app junta num cartão, #27).
+# ---------------------------------------------------------------------------------------------------------------
+OWN_BRAND = "Pague Menos"
+OWN_BRAND_CATEGORY = "pague-menos"
+OWN_DOMAINS = {"dermo", "higiene"}
+
+
+def own_brand_id(pid: str) -> str:
+    return f"pm-{pid}"
+
+
+def own_brand_price(cents: int) -> int:
+    """Igual a ownBrandPrice do app: cerca de 12 a 18% abaixo, sempre em ,90 e nunca igual ou acima do original."""
+    p = math.floor((cents * 0.85) / 100) * 100 + 90
+    while p >= cents:
+        p -= 100
+    return max(p, 190)
+
+
+def own_brand_copy(p: dict) -> dict:
+    price = own_brand_price(p["priceCents"])
+    lst = max(price, own_brand_price(p["listPriceCents"])) if p["listPriceCents"] > p["priceCents"] else price
+    return {**p, "id": own_brand_id(p["id"]), "brand": OWN_BRAND, "priceCents": price, "listPriceCents": lst,
+            "cashbackPct": max(p["cashbackPct"], 5), "categoryIds": [*p["categoryIds"], OWN_BRAND_CATEGORY],
+            "description": f"Marca própria Pague Menos, com a mesma proposta de {p['name'].lower()}. "
+                           + p["description"].replace(p["brand"], OWN_BRAND),
+            "ownBrand": True, "ownBrandOf": p["id"]}
+
+
 def load_catalog() -> Catalog:
     inventory = {i["id"]: i for i in _load("inventory.json")}
     commerce = _load("commerce.json")
@@ -96,10 +130,15 @@ def load_catalog() -> Catalog:
         for pid in n["productIds"]:
             cats_of.setdefault(pid, []).append(n["id"])
     products = [camel_product(p, inventory[p["id"]], commerce, cats_of) for p in _load("products.json")]
+    own = [own_brand_copy(p) for p in products if p["domain"] in OWN_DOMAINS]     # #60: marca própria, igual ao app
+    products += own
     goals = _load("goals.json")
     stock: dict[str, dict[str, int]] = {}
     for x in _load("store_stock.json"):
         stock.setdefault(x["storeId"], {})[x["productId"]] = x["qty"]
+    for s in stock.values():                        # #60: a cópia Pague Menos tem o estoque do item de origem em cada loja
+        for p in own:
+            s[p["id"]] = s.get(p["ownBrandOf"], 0)
     inter = _load("interactions.json")
     imap = {}
     for i in inter:

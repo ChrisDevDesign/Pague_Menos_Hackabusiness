@@ -20,6 +20,13 @@ def _j(name):
     return json.loads((DATA / name).read_text(encoding="utf-8"))
 
 
+def _own_price(cents: int) -> int:
+    p = (cents * 85 // 100) // 100 * 100 + 90
+    while p >= cents:
+        p -= 100
+    return max(p, 190)
+
+
 class Truth:
     def __init__(self):
         inv = {i["id"]: i for i in _j("inventory.json")}
@@ -31,9 +38,18 @@ class Truth:
                                   "type": p["product_type"], "step": p["step"], "ings": p["ingredients"],
                                   "period": p["usage_period"], "claims": p["claims"], "warn": p["warnings"],
                                   "domain": p["domain"]}
+        # #60: marca própria Pague Menos (cópia "pm-" de dermo e higiene), regra escrita de novo aqui, sem importar o motor:
+        # preço = 85% arredondado para baixo na centena + 90 centavos, sempre abaixo do original e no mínimo R$ 1,90;
+        # cashback de pelo menos 5%; mesmo estoque do original em cada loja
+        for pid, t in list(self.prod.items()):
+            if t["domain"] in ("dermo", "higiene"):
+                self.prod["pm-" + pid] = {**t, "price": _own_price(t["price"]), "cashbackPct": max(t["cashbackPct"], 5)}
         self.store_stock = {}
         for x in _j("store_stock.json"):
             self.store_stock.setdefault(x["storeId"], {})[x["productId"]] = x["qty"]
+        for s in self.store_stock.values():
+            for pid in [k for k in s if "pm-" + k in self.prod]:
+                s["pm-" + pid] = s[pid]
         self.rules = _j("interactions.json")
         self.photo = {i["id"] for i in _j("ingredients.json") if i["photosensitizing"]}
 

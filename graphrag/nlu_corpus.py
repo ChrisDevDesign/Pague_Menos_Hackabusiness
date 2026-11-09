@@ -112,6 +112,8 @@ TRAIN: dict[str, list[str]] = {
         "o que usar para a pele ficar lisinha",
     ],
     "refinar": [
+        "caro demais",
+        "ta caro pra mim",
         # 08/11 (#49, #51, #56)
         "tira o protetor",
         "tira o que tem perfume",
@@ -166,6 +168,8 @@ TRAIN: dict[str, list[str]] = {
         "outro desodorante no lugar desse",
     ],
     "pergunta_produto": [
+        "modo de uso?",
+        "como passa esse?",
         "esse serve para pele sensível",
         "esse sérum tem fotossensibilizante",
         "qual o fps desse protetor",
@@ -202,6 +206,8 @@ TRAIN: dict[str, list[str]] = {
         "reposição automática dos meus remédios",
     ],
     "similar": [
+        "proximo",
+        "me mostra o proximo",
         "tem similar",
         "tem genérico",
         "o meu está em falta tem equivalente",

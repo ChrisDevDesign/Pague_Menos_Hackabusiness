@@ -142,7 +142,7 @@ _NEG_CUES = ("sem", "tira", "tirar", "retira", "remove", "evitar", "evita", "nad
              "nenhum", "nenhuma", "nao quero nada", "livre de", "longe de", "dispenso")
 _AFTER_BATH = re.compile(r"\b(depois|antes|apos|pos)\s+(d[oa]\s+)?banho\b")
 _NO_ACID = re.compile(r"\b(sem|nada de|nada com|nao quero|nao use|evitar|evita|tira|tirar|livre de|nenhum|nao pode)\s+(os\s+|o\s+)?acidos?\b(?!\s+(hialuronico|ascorbico|folico|acetilsalicilico|tranexamico|azelaico|salicilico|glicolico|mandelico|graxos?|lactico|kojico))")
-_CHEAPER = re.compile(r"\b(reduzir o valor|diminuir o preco|diminuir o valor|baixar o preco|baixar o valor|reduzir o preco|ta salgado|esta salgado|muito caro|ta caro|fora do orcamento|pesou no bolso|mais barato|mais barata|mais em conta|mais economico|menor preco|baratinho|economizar|gastar menos|orcamento menor|menos de uns)\b")
+_CHEAPER = re.compile(r"\b(reduzir o valor|diminuir o preco|diminuir o valor|baixar o preco|baixar o valor|reduzir o preco|ta salgado|esta salgado|muito caro|ta caro|caro demais|caro pra mim|ta muito caro|fora do orcamento|pesou no bolso|mais barato|mais barata|mais em conta|mais economico|menor preco|baratinho|economizar|gastar menos|orcamento menor|menos de uns)\b")
 _RICHER = re.compile(r"\b(mais top|opcao melhor|algo melhor|top de linha|o melhor que tiver|mais completo|mais completa|gastar mais|aumenta o orcamento|aumentar o orcamento|premium|melhor qualidade|mais caro)\b")
 _PREGNANT = re.compile(r"\b(gravida|gestante|gravidez|gestacao|amamentando|amamentacao|lactante|gravidinha)\b")
 _TIER = [(re.compile(r"\b(economico|primeiro|mais barato de todos)\b"), "economico"),

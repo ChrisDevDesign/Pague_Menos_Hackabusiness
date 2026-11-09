@@ -343,10 +343,11 @@ class TestRag(unittest.TestCase):
         base = GRAPH.search({"query": "pele oleosa"})
         E.search({"query": "tira o que é melado", "context": base["context"]})       # ajuste de conversa: outro caminho
         self.assertEqual(E.stats["fraco"], 0)
-        # typo corrigido pelo corretor também confere, mas concordando nada muda
+        # #62: typo corrigido em frase que o grafo já entendeu ("protetor solar") não chama mais a DeepSeek: antes ela era
+        # chamada só para concordar, sem mudar nada (gasto sem efeito)
         fake = Fake({"solr": {"etapas": ["protecao_solar"], "objetivos": ["protecao_solar"]}})
         r = eng(fake).search({"query": "protetor solr"}); r.pop("rag", None)
-        self.assertEqual(fake.calls, 1)
+        self.assertEqual(fake.calls, 0)
         self.assertEqual(r["intent"]["primaryGoal"], "protecao_solar")
 
     def test_frase_com_etapa_e_preocupacao_nao_perde_a_etapa(self):

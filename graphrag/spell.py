@@ -34,6 +34,8 @@ sensivel sensiveis seca secas seco secos oleosa oleoso mista misto normal nova n
 filha filho mae pai irma irmao avo marido esposa namorada namorado amiga amigo presente presentes
 cheirosa cheiroso gostoso gostosa macia macio lisa liso lisinha lisinho brilho brilhar brilhando viço vico
 rosto rostos corpo corpos pele peles cabelo cabelos fios boca bocas dente dentes olhos olho labios labio maos mao pes
+homem homens mulher mulheres masculino masculina feminino feminina resultado resultados rapido rapida rapidos rapidas
+original originais urgente urgencia socorro indica indicar indicacao natural naturais conto contos
 """.split())
 
 
@@ -87,6 +89,9 @@ class Speller:
                     feed(a, 2)
         for s in PARAPHRASE_CORPUS:
             feed(s, 1)
+        for g in cat.goals:                          # #62: o que o próprio objetivo aceita ("skincare", "pra homem") é conhecido
+            for syn in g.get("synonyms", []):
+                feed(syn, 2)
         self.freq = freq
         self.vocab = frozenset(freq)
 

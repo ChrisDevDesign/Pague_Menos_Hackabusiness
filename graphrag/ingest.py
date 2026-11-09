@@ -143,7 +143,8 @@ COMPARE_FIELDS = ("name", "brand", "line", "step", "coversSteps", "productType",
 
 
 def _next_id(cat: Catalog, taken: set[str]) -> str:
-    n = max([int(p["id"][1:]) for p in cat.products] + [int(t[1:]) for t in taken] + [0]) + 1
+    # só os ids do catálogo ("p123"); as cópias da marca própria ("pm-p123", #60) não contam
+    n = max([int(p["id"][1:]) for p in cat.products if p["id"][1:].isdigit()] + [int(t[1:]) for t in taken if t[1:].isdigit()] + [0]) + 1
     return f"p{n:03d}"
 
 

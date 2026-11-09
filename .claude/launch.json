@@ -8,6 +8,12 @@
       "port": 8787
     },
     {
+      "name": "graphrag-windows",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-X", "utf8", "-m", "graphrag.service.server", "--port", "8787"],
+      "port": 8787
+    },
+    {
       "name": "app",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "app", "run", "dev", "--", "--port", "5173", "--strictPort"],

@@ -57,10 +57,10 @@ class TestScenariosDoc08(unittest.TestCase):
             self.assertIn("protecao_solar", {s for i in k["items"] for s in i["product"]["coversSteps"]})
 
     def test_T6(self):
-        # com o desconto do kit (#30), o kit de acne mais barato sai por ~R$ 39; até R$ 35 nada fecha
-        r = S("Acne, pele oleosa, até R$ 35"); self.ok(r)
+        # com o desconto do kit (#30) e a marca própria (#60), o kit de acne mais barato sai por ~R$ 34; até R$ 30 nada fecha
+        r = S("Acne, pele oleosa, até R$ 30"); self.ok(r)
         self.assertEqual(r["kitsStatus"], "none_in_budget"); self.assertEqual(r["kits"], []); self.assertIsNotNone(r["closestKit"])
-        self.assertGreater(r["closestKit"]["totalCents"], 3500)
+        self.assertGreater(r["closestKit"]["totalCents"], 3000)
 
     def test_faixas_economico_essencial_completo(self):
         # #31: Econômico < Essencial < Completo; Completo tem mais itens ou itens melhores
@@ -71,7 +71,8 @@ class TestScenariosDoc08(unittest.TestCase):
             self.assertTrue(tot[0] < tot[1] < tot[2], (q, tot))
             self.assertFalse([m for m in check_response(r) if "M4" in m], q)
         acne = S("acne até R$ 80")["kits"]
-        self.assertGreater(len(acne[2]["items"]), len(acne[1]["items"]))
+        # #60: com a marca própria mais barata, até R$ 80 o Essencial também chega a 5 itens; o Completo nunca tem menos
+        self.assertGreaterEqual(len(acne[2]["items"]), len(acne[1]["items"]))
         # o texto do Completo só diz o que é verdade em relação ao Essencial
         for q in ("kit de suplementos", "skin care", "manchas até R$ 60", "protetor solar", "acne até R$ 80"):
             ess, comp = S(q)["kits"][1:3]
